@@ -18,7 +18,7 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
 
-    # Provide "now" to all templates so you can use {{ now().year }}
+    # Provide "now" to all templates (e.g. {{ now().year }} )
     @app.context_processor
     def inject_now():
         return {"now": datetime.datetime.now}
@@ -29,7 +29,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(quiz_bp)
 
-    # Create tables if needed
+    # Create tables if they don’t exist
     with app.app_context():
         db.create_all()
 

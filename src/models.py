@@ -1,3 +1,4 @@
+# models.py
 from app import db
 import json
 
@@ -23,3 +24,16 @@ class User(db.Model):
         if self.total_attempts == 0:
             return 0
         return self.total_correct / self.total_attempts
+
+    def get_level(self):
+        """
+        Compute the user's level on-the-fly, based on accuracy. 
+        Or you could store it in the DB and update occasionally.
+        """
+        acc = self.get_accuracy()
+        if acc < 0.3:
+            return "beginner"
+        elif acc < 0.8:
+            return "intermediate"
+        else:
+            return "advanced"

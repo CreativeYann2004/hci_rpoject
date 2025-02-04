@@ -1,18 +1,18 @@
 import random
+import spotipy.exceptions
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from app import db
 from models import User
-import spotipy.exceptions
 from routes.auth import get_spotify_client
 
 quiz_bp = Blueprint('quiz_bp', __name__)
 
-# We no longer filter out tracks without preview URLs—since we'll use
-# the Web Playback SDK as intended for full playback.
+# This global list is where we store all the tracks from the user’s chosen playlist
 ALL_TRACKS = []
 
+
 ########################################
-# Helper: current user
+# Helper: current_user
 ########################################
 def current_user():
     uid = session.get("user_id")
@@ -34,19 +34,31 @@ def require_login(f):
     return wrapper
 
 ########################################
-# Difficulty & year margin check
+# Personalized Settings
 ########################################
-def get_difficulty():
-    return session.get('difficulty', 'normal')
-
-def within_year_margin(guess_year, actual_year):
-    diff = get_difficulty()
-    if diff == 'easy':
-        return abs(guess_year - actual_year) <= 3
-    elif diff == 'normal':
-        return abs(guess_year - actual_year) <= 1
-    else:
-        return guess_year == actual_year
+def get_personalization_settings(level):
+    """
+    Return dict with margin, snippet length, and whether to show hints.
+    Adjust these as you wish for your personalized logic.
+    """
+    if level == "beginner":
+        return {
+            "year_margin": 3,
+            "snippet_seconds": 30,
+            "show_hints": True
+        }
+    elif level == "intermediate":
+        return {
+            "year_margin": 1,
+            "snippet_seconds": 15,
+            "show_hints": False
+        }
+    else:  # advanced
+        return {
+            "year_margin": 0,
+            "snippet_seconds": 5,
+            "show_hints": False
+        }
 
 ########################################
 # Dashboard
@@ -70,11 +82,16 @@ def dashboard():
         else:
             fallback_add_minimum_tracks()
 
-    missed_count = len(user.get_missed_songs())
-    return render_template('dashboard.html',
-                           user=user,
-                           missed_count=missed_count,
-                           all_songs=ALL_TRACKS)
+    missed_count = 0
+    if user:
+        missed_count = len(user.get_missed_songs())
+
+    return render_template(
+        'dashboard.html',
+        user=user,
+        missed_count=missed_count,
+        all_songs=ALL_TRACKS
+    )
 
 ########################################
 # Select / Import Playlist
@@ -107,9 +124,11 @@ def select_playlist():
                     break
                 offset += 50
 
-            return render_template('select_playlist.html',
-                                   official_playlists=official_playlists,
-                                   user_playlists=user_playlists)
+            return render_template(
+                'select_playlist.html',
+                official_playlists=official_playlists,
+                user_playlists=user_playlists
+            )
         except spotipy.exceptions.SpotifyException as e:
             if "expired" in str(e).lower():
                 flash("Your Spotify token expired. Please reconnect.", "info")
@@ -143,7 +162,7 @@ def select_playlist():
 def _fetch_playlist_tracks(sp, playlist_id, limit=300):
     """
     Fetches tracks from the selected playlist. 
-    Does NOT require a preview_url. We rely on the Web Playback SDK.
+    Does NOT require a preview_url. We'll rely on the Web Playback SDK.
     """
     offset = 0
     total = 0
@@ -178,9 +197,6 @@ def _fetch_playlist_tracks(sp, playlist_id, limit=300):
             artists = track.get('artists', [{"name": "Unknown Artist"}])
             artist_name = artists[0].get('name', '???')
 
-            # We no longer care about preview_url at all.
-            # We'll let the Web Playback SDK handle actual playback.
-
             album_info = track.get('album', {})
             release_date = album_info.get('release_date', '1900-01-01')
             year = 1900
@@ -203,13 +219,9 @@ def _fetch_playlist_tracks(sp, playlist_id, limit=300):
     return total, added
 
 ########################################
-# Fallback Tracks (No preview URLs)
+# Fallback Tracks (No playlist or no matches)
 ########################################
 def fallback_add_minimum_tracks():
-    """
-    If no tracks were found or loaded, we add some known fallback track IDs
-    so the quiz has something to show. These are real Spotify tracks.
-    """
     global ALL_TRACKS
     fallback_songs = [
         {
@@ -242,13 +254,16 @@ def settings():
             session['playlist_id'] = custom_pl
         flash("Settings updated!", "success")
         return redirect(url_for('quiz_bp.dashboard'))
+
     color = session.get('color_theme', 'navy')
-    diff = get_difficulty()
+    diff = session.get('difficulty', 'normal')
     curr_pl = session.get('playlist_id', '')
-    return render_template('settings.html',
-                           color_theme=color,
-                           current_diff=diff,
-                           current_playlist=curr_pl)
+    return render_template(
+        'settings.html',
+        color_theme=color,
+        current_diff=diff,
+        current_playlist=curr_pl
+    )
 
 ########################################
 # RANDOM UI
@@ -265,9 +280,9 @@ def random_version():
 
     chosen = random.choice(ALL_TRACKS)
     session["current_track_id"] = chosen["id"]
-    # Choose a random challenge type
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
+
     return render_template('random_version.html', song=chosen, feedback=None)
 
 ########################################
@@ -276,6 +291,12 @@ def random_version():
 @quiz_bp.route('/personalized_version')
 @require_login
 def personalized_version():
+    """
+    "Exactly like random," but with:
+      - a user level that determines year margin, snippet length, and hints
+      - a preference for re-showing missed songs 
+    """
+    user = current_user()
     if not ALL_TRACKS:
         fallback_add_minimum_tracks()
 
@@ -283,29 +304,37 @@ def personalized_version():
         flash("No tracks found and fallback is empty!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    user = current_user()
-    acc = user.get_accuracy()
-    if acc > 0.8:
-        session['difficulty'] = 'hard'
-    elif acc < 0.3:
-        session['difficulty'] = 'easy'
-    else:
-        session['difficulty'] = 'normal'
+    # Decide the user's level
+    level = user.get_level()  # "beginner", "intermediate", "advanced"
+    settings = get_personalization_settings(level)
+    session["personal_year_margin"] = settings["year_margin"]
+    session["personal_snippet_secs"] = settings["snippet_seconds"]
+    session["personal_show_hints"] = settings["show_hints"]
 
-    missed = user.get_missed_songs()
-    if missed:
-        track_id = random.choice(missed)
-        chosen = next((t for t in ALL_TRACKS if t["id"] == track_id), None)
-        if not chosen:
-            chosen = random.choice(ALL_TRACKS)
-    else:
+    # Weighted pick: if the user has any missed songs, let's pick from them ~80% of the time
+    missed_list = user.get_missed_songs()
+    chosen = None
+    if missed_list and random.random() < 0.8:
+        missed_candidates = [t for t in ALL_TRACKS if t["id"] in missed_list]
+        if missed_candidates:
+            chosen = random.choice(missed_candidates)
+
+    # If we didn't pick from missed, or if missed was empty, pick from full set
+    if not chosen:
         chosen = random.choice(ALL_TRACKS)
 
+    session["current_track_id"] = chosen["id"]
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
-    session["current_track_id"] = chosen["id"]
 
-    return render_template('personalized_version.html', song=chosen, missed_count=len(missed), feedback=None)
+    return render_template(
+        'personalized_version.html',
+        song=chosen,
+        missed_count=len(missed_list),
+        feedback=None,
+        snippet_secs=settings["snippet_seconds"],
+        show_hints=settings["show_hints"]
+    )
 
 ########################################
 # SUBMIT GUESS
@@ -319,15 +348,32 @@ def submit_guess():
         flash("No active track. Returning to dashboard.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    track = next((x for x in ALL_TRACKS if x["id"] == track_id), None)
+    track = next((t for t in ALL_TRACKS if t["id"] == track_id), None)
     if not track:
-        flash("Track not found in list. Returning to dashboard.", "warning")
+        flash("Track not found. Returning to dashboard.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
     challenge = session.get("challenge_type", "artist")
     guess_str = request.form.get("guess", "").strip().lower()
     guess_correct = False
 
+    # If we're in personalized mode, use the "personal_year_margin" if available
+    personal_margin = session.get("personal_year_margin")
+
+    def within_year_margin_dynamic(guess, actual):
+        if personal_margin is not None:
+            return abs(guess - actual) <= personal_margin
+        else:
+            # fallback to your old logic via session['difficulty']
+            diff = session.get('difficulty', 'normal')
+            if diff == 'easy':
+                return abs(guess - actual) <= 3
+            elif diff == 'normal':
+                return abs(guess - actual) <= 1
+            else:
+                return guess == actual
+
+    # Check guess
     if challenge == "artist":
         if guess_str == track["artist"].lower():
             guess_correct = True
@@ -337,7 +383,7 @@ def submit_guess():
     elif challenge == "year":
         if guess_str.isdigit():
             guess_year = int(guess_str)
-            if within_year_margin(guess_year, track["year"]):
+            if within_year_margin_dynamic(guess_year, track["year"]):
                 guess_correct = True
 
     user.total_attempts += 1
@@ -376,7 +422,6 @@ def random_feedback():
 @require_login
 def personalized_feedback():
     fb = session.get("feedback")
-    # missed_count is set to 0 here, since we don’t re-check
     return render_template('personalized_version.html', song=None, missed_count=0, feedback=fb)
 
 ########################################
@@ -392,15 +437,11 @@ def scoreboard():
             return 0
         return u.total_correct / u.total_attempts
 
-    sorted_users = sorted(
-        users,
-        key=lambda x: (accuracy(x), x.total_correct),
-        reverse=True
-    )
+    sorted_users = sorted(users, key=lambda x: (accuracy(x), x.total_correct), reverse=True)
     return render_template('scoreboard.html', all_users=sorted_users)
 
 ########################################
-# AUTOCOMPLETE for Artist (for Tab key)
+# AUTOCOMPLETE for Artist
 ########################################
 @quiz_bp.route('/autocomplete/tab_artist')
 @require_login
