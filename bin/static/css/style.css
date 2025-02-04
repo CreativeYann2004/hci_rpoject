@@ -1,0 +1,51 @@
+/* Body defaults */
+body {
+  background-color: #f5f5f5;
+  margin: 0;
+  padding: 0;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Light theme override */
+.light-theme {
+  background-color: #ffffff;
+  color: #000000;
+}
+
+/* Dark navbar background gradient */
+.navbar-dark.bg-dark {
+  background: linear-gradient(90deg, #003366 0%, #001B44 100%);
+  border-bottom: 2px solid #002244;
+}
+
+/* The quiz buttons */
+.quiz-btn {
+  background-color: #003366;
+  color: #fff;
+  border: none;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+  padding: 0.5rem 1rem;
+  margin-right: 0.5rem;
+}
+
+.quiz-btn:hover {
+  background-color: #002244;
+  color: #fff !important;
+  transform: scale(1.05);
+  cursor: pointer;
+}
+
+/* Footer styling */
+footer.bg-secondary {
+  background: linear-gradient(90deg, #444 0%, #222 100%);
+  border-top: 3px solid #003366;
+}
+
+footer .container {
+  font-size: 0.85rem;
+}
+
+/* Subtle table borders */
+.table-bordered > :not(caption) > * > * {
+  border-color: #ddd !important;
+}

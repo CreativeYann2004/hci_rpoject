@@ -1,0 +1,100 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Dashboard</h2>
+<div class="card mt-3">
+  <div class="card-body">
+    <h5 class="card-title">Hello, {{ user.username }}!</h5>
+    <p class="card-text">
+      Attempts: {{ user.total_attempts }} <br/>
+      Correct: {{ user.total_correct }} <br/>
+      Missed Songs: {{ missed_count }}
+    </p>
+
+    <!-- A fun fact for the user (if you want) -->
+    {% if fun_fact %}
+      <div class="alert alert-info">
+        <strong>Fun Fact:</strong> {{ fun_fact }}
+      </div>
+    {% endif %}
+
+    <!-- Buttons for your quiz functionalities -->
+    <button 
+      class="btn quiz-btn me-2" 
+      onclick="window.location='{{ url_for('quiz_bp.random_version') }}'">
+      Random Version
+    </button>
+
+    <button 
+      class="btn quiz-btn me-2"
+      onclick="window.location='{{ url_for('quiz_bp.select_own_playlist') }}'">
+      Pick from My Playlists
+    </button>
+
+    <button 
+      class="btn quiz-btn me-2" 
+      onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
+      Personalized Version
+    </button>
+    <button 
+      class="btn quiz-btn me-2"
+      onclick="window.location='{{ url_for('quiz_bp.scoreboard') }}'">
+      View Scoreboard
+    </button>
+
+    <button 
+      class="btn quiz-btn"
+      onclick="window.location='{{ url_for('quiz_bp.import_spotify_playlist') }}'">
+      Import/Select Playlist
+    </button>
+  </div>
+</div>
+
+<hr/>
+<h4>All Available Tracks with Snippets</h4>
+<p class="text-muted">
+  Below is a mini-playlist of all tracks that have previews. Click play to hear a snippet.
+</p>
+
+<table class="table table-sm table-bordered">
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Artist</th>
+      <th>Snippet</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in all_songs %}
+      <tr>
+        <td>{{ s.title }}</td>
+        <td>{{ s.artist }}</td>
+        <td>
+          <audio controls>
+            <source src="{{ s.preview_url }}" type="audio/mpeg">
+            Your browser does not support the audio element.
+          </audio>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if session.playlist_id %}
+<hr/>
+<h4>Listen to the Full Playlist</h4>
+<iframe
+  style="border-radius:12px"
+  src="https://open.spotify.com/embed/playlist/{{ session.playlist_id }}"
+  width="100%"
+  height="380"
+  frameborder="0"
+  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+  loading="lazy">
+</iframe>
+{% else %}
+<p class="text-muted">
+  No full playlist embedded yet. Select or import a playlist above.
+</p>
+{% endif %}
+
+{% endblock %}

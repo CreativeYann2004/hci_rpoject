@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Choose a Predefined Playlist</h2>
+
+<form method="POST">
+  <div class="mb-3">
+    <label for="offPlSelect" class="form-label">Popular Playlists</label>
+    <select id="offPlSelect" name="playlist_id" class="form-select">
+      {% for pl in official_playlists %}
+      <option value="{{ pl.id }}">{{ pl.name }} ({{ pl.id }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-success">Use This Playlist</button>
+</form>
+{% endblock %}

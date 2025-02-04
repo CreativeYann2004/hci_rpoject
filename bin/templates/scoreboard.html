@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Global Scoreboard</h2>
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Correct</th>
+      <th>Attempts</th>
+      <th>Accuracy</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in all_users %}
+      {% set accuracy = 0 %}
+      {% if u.total_attempts != 0 %}
+        {% set accuracy = (u.total_correct / u.total_attempts) * 100 %}
+      {% endif %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td>{{ u.total_correct }}</td>
+        <td>{{ u.total_attempts }}</td>
+        <td>{{ accuracy|round(1) }}%</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

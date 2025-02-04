@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Dashboard (Project Manual / HCI)</h2>
+<p class="text-muted">Welcome to our two-interface prototype: Random UI vs Personalized UI.</p>
+
+<div class="card mt-3">
+  <div class="card-body">
+    <h5 class="card-title">Hello, {{ user.username }}!</h5>
+    <p class="card-text">
+      Attempts: {{ user.total_attempts }}<br/>
+      Correct: {{ user.total_correct }}<br/>
+      Missed Songs: {{ missed_count }}
+    </p>
+
+    <button 
+      class="btn quiz-btn me-2" 
+      onclick="window.location='{{ url_for('quiz_bp.random_version') }}'">
+      Random UI
+    </button>
+
+    <button 
+      class="btn quiz-btn me-2" 
+      onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
+      Personalized UI
+    </button>
+
+    <button 
+      class="btn quiz-btn me-2"
+      onclick="window.location='{{ url_for('quiz_bp.scoreboard') }}'">
+      View Scoreboard
+    </button>
+
+    <!-- Button for selecting/importing a playlist -->
+    <button 
+      class="btn quiz-btn"
+      onclick="window.location='{{ url_for('quiz_bp.select_playlist') }}'">
+      Select/Import Playlist
+    </button>
+  </div>
+</div>
+
+{% if session.playlist_id %}
+<hr/>
+<h4>Listen to the Full Playlist</h4>
+<iframe
+  style="border-radius:12px"
+  src="https://open.spotify.com/embed/playlist/{{ session.playlist_id }}"
+  width="100%"
+  height="380"
+  frameborder="0"
+  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+  loading="lazy">
+</iframe>
+{% else %}
+<p class="text-muted">
+  No full playlist embedded yet. Select or import a playlist above.
+</p>
+{% endif %}
+{% endblock %}

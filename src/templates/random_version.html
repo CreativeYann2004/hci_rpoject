@@ -1,0 +1,133 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Random UI Version</h2>
+
+{% if feedback %}
+  <div class="alert alert-info">{{ feedback }}</div>
+  <a class="btn btn-primary" href="{{ url_for('quiz_bp.random_version') }}">Try Another Snippet</a>
+{% else %}
+  {% if song %}
+    <p><strong>Press the Play button to start playback:</strong></p>
+    <!-- The Play button will trigger the Web Playback SDK -->
+    <button id="playButton" class="btn btn-primary" data-track-id="{{ song.id }}">
+      Play
+    </button>
+  {% else %}
+    <p><em>No track available.</em></p>
+  {% endif %}
+
+  <!-- Single-field guess form -->
+  {% set ctype = session.challenge_type %}
+  <form method="POST" action="{{ url_for('quiz_bp.submit_guess') }}">
+    {% if ctype == 'title' %}
+      <p>Guess the <strong>Song Title</strong>:</p>
+      <input type="text" name="guess" id="guess" class="form-control" placeholder="Song Title..." required>
+    {% elif ctype == 'year' %}
+      <p>Guess the <strong>Release Year</strong>:</p>
+      <input type="text" name="guess" class="form-control" placeholder="Year (e.g. 1999)" required>
+    {% else %}
+      <p>Guess the <strong>Artist</strong>:</p>
+      <input type="text" name="guess" id="guess" class="form-control" placeholder="Artist name..." required>
+    {% endif %}
+    <input type="hidden" name="source_page" value="random">
+    <button class="btn btn-success mt-2">Submit Guess</button>
+  </form>
+{% endif %}
+
+<!-- Spotify Web Playback SDK -->
+<script src="https://sdk.scdn.co/spotify-player.js"></script>
+<script>
+  // Ensure the SDK is loaded
+  window.onSpotifyWebPlaybackSDKReady = () => {
+    const token = "{{ session.spotify_token }}";
+    if (!token) {
+      console.error("No Spotify token available");
+      return;
+    }
+
+    const player = new Spotify.Player({
+      name: 'Quiz Web Player',
+      getOAuthToken: cb => { cb(token); }
+    });
+
+    // Error handling
+    player.addListener('initialization_error', ({ message }) => { console.error("Initialization error:", message); });
+    player.addListener('authentication_error', ({ message }) => { console.error("Authentication error:", message); });
+    player.addListener('account_error', ({ message }) => { console.error("Account error:", message); });
+    player.addListener('playback_error', ({ message }) => { console.error("Playback error:", message); });
+
+    // On ready, store the device_id and transfer playback
+    player.addListener('ready', ({ device_id }) => {
+      console.log('Ready with Device ID', device_id);
+      window.quizDeviceId = device_id;
+      transferPlayback(device_id);
+    });
+
+    player.connect();
+
+    function transferPlayback(device_id) {
+      fetch("https://api.spotify.com/v1/me/player", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+          "device_ids": [device_id],
+          "play": false
+        })
+      })
+      .then(response => {
+        if (response.ok) {
+          console.log("Playback transferred to Web Player.");
+        } else {
+          console.error("Failed to transfer playback:", response);
+        }
+      })
+      .catch(error => {
+        console.error("Transfer playback error:", error);
+      });
+    }
+
+    // Start playback of the chosen track
+    window.playTrack = function(trackId) {
+      if (!window.quizDeviceId) {
+        console.error("Device ID not available yet.");
+        return;
+      }
+      const trackUri = "spotify:track:" + trackId;
+      console.log("Attempting to play track:", trackUri);
+
+      fetch(`https://api.spotify.com/v1/me/player/play?device_id=${window.quizDeviceId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({
+          uris: [trackUri]
+        })
+      })
+      .then(response => {
+        if (!response.ok) {
+          console.error("Error starting playback:", response);
+        } else {
+          console.log("Playback started for track:", trackUri);
+        }
+      })
+      .catch(err => {
+        console.error("Error during playback start:", err);
+      });
+    };
+
+    // Attach click event to the Play button
+    const playButton = document.getElementById("playButton");
+    if (playButton) {
+      playButton.addEventListener("click", () => {
+        const trackId = playButton.getAttribute("data-track-id");
+        playTrack(trackId);
+      });
+    }
+  };
+</script>
+{% endblock %}

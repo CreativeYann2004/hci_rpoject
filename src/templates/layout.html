@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Project Manual: Random vs Personalized UI{% endblock %}</title>
+  <!-- Bootstrap 5 CSS -->
+  <link 
+    rel="stylesheet" 
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  />
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="{% if session.color_theme == 'light' %}light-theme{% endif %}">
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg {% if session.color_theme == 'light' %}navbar-light bg-light{% else %}navbar-dark bg-dark{% endif %}">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('quiz_bp.dashboard') }}">
+        HCI - Two UI Prototypes
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarToggler" aria-controls="navbarToggler" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarToggler">
+        <ul class="navbar-nav ms-auto">
+
+          {% if session.spotify_token %}
+            <!-- If user is already connected to Spotify, show a message -->
+            <li class="nav-item">
+              <span class="nav-link">Spotify: Connected</span>
+            </li>
+          {% else %}
+            <!-- If not connected, let them connect -->
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('auth_bp.spotify_login') }}">
+                Connect to Spotify
+              </a>
+            </li>
+          {% endif %}
+
+          {% if session.user_id %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('quiz_bp.settings') }}">Settings</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('auth_bp.logout') }}">Logout</a>
+          </li>
+          {% else %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('auth_bp.login') }}">Login</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('auth_bp.register') }}">Register</a>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main container -->
+  <div class="container mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Here goes the page-specific content -->
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-secondary text-white mt-5 py-3">
+    <div class="container text-center">
+      <small>HCI Project – Random UI vs Personalized UI</small>
+    </div>
+  </footer>
+
+  <!-- Bootstrap bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/tab_autocomplete.js') }}"></script>
+</body>
+</html>

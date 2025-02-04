@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Select One of Your Spotify Playlists</h2>
+<form method="POST">
+  <div class="mb-3">
+    <label class="form-label" for="playlistSelect">Available Playlists</label>
+    <select name="playlist_id" id="playlistSelect" class="form-select">
+      {% for pl in playlists %}
+        <option value="{{ pl.id }}">{{ pl.name }} ({{ pl.tracks.total }} tracks)</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button class="btn btn-success">Use This Playlist</button>
+</form>
+{% endblock %}

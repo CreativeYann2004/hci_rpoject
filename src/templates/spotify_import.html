@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Import Spotify Playlist</h2>
+<p>Leave blank to use your chosen or default playlist <code>{{ session.playlist_id or '37i9dQZF1DWSqmBTGDYngZ' }}</code>. Tracks with no snippet are skipped.</p>
+<form method="POST">
+  <div class="mb-3">
+    <label class="form-label">Playlist ID/URI</label>
+    <input type="text" name="playlist_id" class="form-control" />
+  </div>
+  <button class="btn btn-warning">Import</button>
+</form>
+{% endblock %}
