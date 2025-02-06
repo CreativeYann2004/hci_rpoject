@@ -23,7 +23,7 @@ def create_app():
     def inject_now():
         return {"now": datetime.datetime.now}
 
-    # ==== NEW: Provide a default buddy_message so we never get TypeError ====
+    # Provide a default buddy_message so that every template has it (avoids Undefined errors)
     @app.context_processor
     def inject_buddy_message():
         return {"buddy_message": session.get("buddy_message", "")}

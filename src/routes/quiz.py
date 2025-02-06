@@ -12,7 +12,7 @@ quiz_bp = Blueprint('quiz_bp', __name__)
 # This global list is where we store all the tracks from the user’s chosen playlist
 ALL_TRACKS = []
 
-# NEW: A small list of random music facts
+# A small list of random music facts
 RANDOM_MUSIC_FACTS = [
     "The world's longest running performance is John Cage's 'Organ²/ASLSP', scheduled to end in 2640!",
     "Did you know? The Beatles were originally called The Quarrymen.",
@@ -70,6 +70,45 @@ def get_personalization_settings(level):
             "show_hints": False
         }
 
+def get_buddy_personality_lines():
+    """
+    Example: returns a dict of lines for 'friendly' or 'strict' buddy personalities.
+    We store buddy_personality in session, default to 'friendly'.
+    """
+    personality = session.get('buddy_personality', 'friendly')
+
+    lines = {
+        'friendly': {
+            'correct': [
+                "You're on fire!",
+                "Woohoo! Nice job!",
+                "Way to go, friend!"
+            ],
+            'wrong': [
+                "Don't worry, you'll get it next time!",
+                "Chin up—try again soon!",
+            ],
+            'start': [
+                "Let's do this! I'm here to help!",
+            ]
+        },
+        'strict': {
+            'correct': [
+                "At least you got it right this time.",
+                "Alright, that was acceptable.",
+            ],
+            'wrong': [
+                "Incorrect. Focus harder next time.",
+                "You can do better than that...",
+            ],
+            'start': [
+                "You're here again? Fine, let's get it done.",
+            ]
+        }
+    }
+
+    return lines.get(personality, lines['friendly'])
+
 ########################################
 # Dashboard
 ########################################
@@ -101,8 +140,8 @@ def dashboard():
     if not session.get("spotify_token"):
         session["buddy_message"] = f"Hello, {user.username if user else 'Friend'}! First, connect your Spotify account above!"
     else:
-        # Otherwise, we can clear or set a different message
-        session["buddy_message"] = ""
+        # Otherwise, we can set something else
+        session["buddy_message"] = random.choice(get_buddy_personality_lines()['start'])
 
     return render_template(
         'dashboard.html',
@@ -175,9 +214,7 @@ def select_playlist():
     else:
         flash(f"Imported {total} tracks; {added} loaded for guessing!", "success")
 
-    # Clear buddy message or set a new one if you want
     session["buddy_message"] = "Playlist imported! Let's guess some songs."
-
     return redirect(url_for('quiz_bp.dashboard'))
 
 ########################################
@@ -186,7 +223,6 @@ def select_playlist():
 def _fetch_playlist_tracks(sp, playlist_id, limit=300):
     """
     Fetches tracks from the selected playlist.
-    Does NOT require a preview_url. We'll rely on the Web Playback SDK.
     """
     offset = 0
     total = 0
@@ -243,7 +279,7 @@ def _fetch_playlist_tracks(sp, playlist_id, limit=300):
     return total, added
 
 ########################################
-# Fallback Tracks (No playlist or no matches)
+# Fallback Tracks
 ########################################
 def fallback_add_minimum_tracks():
     global ALL_TRACKS
@@ -270,25 +306,39 @@ def fallback_add_minimum_tracks():
 @quiz_bp.route('/settings', methods=['GET','POST'])
 @require_login
 def settings():
+    """
+    We add a new 'buddy_personality' setting for the user:
+       - friendly
+       - strict
+       - maybe more in the future
+    """
+    user = current_user()
     if request.method == 'POST':
         session['color_theme'] = request.form.get('color_theme', 'navy')
         session['difficulty'] = request.form.get('difficulty', 'normal')
         custom_pl = request.form.get('playlist_id', '').strip()
         if custom_pl:
             session['playlist_id'] = custom_pl
+
+        # NEW: buddy personality
+        chosen_personality = request.form.get('buddy_personality', 'friendly')
+        session['buddy_personality'] = chosen_personality
+
         flash("Settings updated!", "success")
         return redirect(url_for('quiz_bp.dashboard'))
 
     color = session.get('color_theme', 'navy')
     diff = session.get('difficulty', 'normal')
     curr_pl = session.get('playlist_id', '')
-    # Optionally set a buddy message
-    session["buddy_message"] = "Customize your theme and difficulty here!"
+    curr_buddy = session.get('buddy_personality', 'friendly')
+
+    session["buddy_message"] = "Customize your theme, difficulty, and buddy personality here!"
     return render_template(
         'settings.html',
         color_theme=color,
         current_diff=diff,
-        current_playlist=curr_pl
+        current_playlist=curr_pl,
+        buddy_personality=curr_buddy
     )
 
 ########################################
@@ -299,7 +349,6 @@ def settings():
 def random_version():
     if not ALL_TRACKS:
         fallback_add_minimum_tracks()
-
     if not ALL_TRACKS:
         flash("No tracks found and fallback is empty!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
@@ -310,7 +359,9 @@ def random_version():
     session["challenge_type"] = ctype
 
     # Optionally set a buddy message
-    session["buddy_message"] = "Random mode: guess the track!"
+    lines = get_buddy_personality_lines()
+    start_line = random.choice(lines['start'])
+    session["buddy_message"] = f"Random mode: {start_line}"
     return render_template('random_version.html', song=chosen, feedback=None)
 
 ########################################
@@ -319,15 +370,9 @@ def random_version():
 @quiz_bp.route('/personalized_version')
 @require_login
 def personalized_version():
-    """
-    "Exactly like random," but with:
-      - a user level that determines year margin, snippet length, and hints
-      - a preference for re-showing missed songs 
-    """
     user = current_user()
     if not ALL_TRACKS:
         fallback_add_minimum_tracks()
-
     if not ALL_TRACKS:
         flash("No tracks found and fallback is empty!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
@@ -339,15 +384,23 @@ def personalized_version():
     session["personal_snippet_secs"] = settings["snippet_seconds"]
     session["personal_show_hints"] = settings["show_hints"]
 
-    # Weighted pick: if the user has any missed songs, let's pick from them ~80% of the time
     missed_list = user.get_missed_songs()
     chosen = None
-    if missed_list and random.random() < 0.8:
+
+    # Weighted pick for missed songs
+    # If user is struggling, we might re-show missed songs more frequently
+    # e.g. 80% chance if user is beginner or accuracy < 0.5
+    accuracy = user.get_accuracy()
+    if level == "beginner" or accuracy < 0.5:
+        re_show_prob = 0.8
+    else:
+        re_show_prob = 0.5  # intermediate or advanced sees missed songs less often
+
+    if missed_list and random.random() < re_show_prob:
         missed_candidates = [t for t in ALL_TRACKS if t["id"] in missed_list]
         if missed_candidates:
             chosen = random.choice(missed_candidates)
 
-    # If we didn't pick from missed, or if missed was empty, pick from full set
     if not chosen:
         chosen = random.choice(ALL_TRACKS)
 
@@ -355,8 +408,10 @@ def personalized_version():
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
 
-    # Optionally set a buddy message
-    session["buddy_message"] = "Personalized mode: let's see how you do!"
+    # Buddy line for start
+    lines = get_buddy_personality_lines()
+    session["buddy_message"] = random.choice(lines['start']) + " Personalized mode: let's see how you do!"
+
     return render_template(
         'personalized_version.html',
         song=chosen,
@@ -387,14 +442,12 @@ def submit_guess():
     guess_str = request.form.get("guess", "").strip().lower()
     guess_correct = False
 
-    # If we're in personalized mode, use the "personal_year_margin" if available
     personal_margin = session.get("personal_year_margin")
 
     def within_year_margin_dynamic(guess, actual):
         if personal_margin is not None:
             return abs(guess - actual) <= personal_margin
         else:
-            # fallback to your old logic via session['difficulty']
             diff = session.get('difficulty', 'normal')
             if diff == 'easy':
                 return abs(guess - actual) <= 3
@@ -418,6 +471,7 @@ def submit_guess():
 
     user.total_attempts += 1
     missed_list = user.get_missed_songs()
+    lines = get_buddy_personality_lines()
 
     if guess_correct:
         user.total_correct += 1
@@ -425,26 +479,33 @@ def submit_guess():
         if track_id in missed_list:
             missed_list.remove(track_id)
 
-        # If correct AND from random page, add a random fact for the buddy to speak
+        # random or personal?
         src = request.form.get("source_page", "random")
         if src == "random":
+            # random fact
             fact = random.choice(RANDOM_MUSIC_FACTS)
-            session["buddy_message"] = fact  # buddy will speak this on the next page
+            session["buddy_message"] = fact
         else:
-            session["buddy_message"] = "Nice job on that guess!"
+            # random line from 'correct'
+            session["buddy_message"] = random.choice(lines['correct'])
+
     else:
         feedback = f"Wrong! The correct was: {track['artist']} - {track['title']} ({track['year']})"
         if track_id not in missed_list:
             missed_list.append(track_id)
-        # Maybe a gentle prompt
-        session["buddy_message"] = "You'll get it next time!"
+
+        # random line from 'wrong'
+        session["buddy_message"] = random.choice(lines['wrong'])
+
+        # Optionally re-insert the missed track into ALL_TRACKS to surface it again soon
+        # This is optional if you want them to see that track more often:
+        # ALL_TRACKS.append(track)  # (only if you want duplicates)
 
     user.set_missed_songs(missed_list)
     db.session.commit()
     session["feedback"] = feedback
 
-    src = request.form.get("source_page", "random")
-    if src == "random":
+    if request.form.get("source_page") == "random":
         return redirect(url_for('quiz_bp.random_feedback'))
     else:
         return redirect(url_for('quiz_bp.personalized_feedback'))
@@ -486,11 +547,46 @@ def scoreboard():
 @quiz_bp.route('/autocomplete/tab_artist')
 @require_login
 def tab_autocomplete_artist():
+    """
+    In random mode, we do normal logic.
+    In personalized mode, if user is advanced, we give minimal help; 
+       if user is beginner, we give more help (like fill if it partially contains).
+    We'll check 'session["challenge_type"]' or any other indicator.
+    """
     query = request.args.get("query", "").strip().lower()
     if not query:
         return jsonify({"match": ""})
+
+    user = current_user()
+    if not user:
+        return jsonify({"match": ""})
+
+    # Check if user is currently in personalized version or random?
+    # We'll guess based on 'challenge_type', or you can store some session var.
+    # Let's see if the user is advanced or not
+    level = user.get_level()  # "beginner", "intermediate", "advanced"
+
     artist_names = {t["artist"].lower() for t in ALL_TRACKS}
-    for art in artist_names:
-        if art.startswith(query):
-            return jsonify({"match": art})
-    return jsonify({"match": ""})
+    
+    # "beginner" gets partial matches if anywhere in the name
+    # "intermediate" gets partial if starts with
+    # "advanced" gets no auto-filling (or just exact match)
+    if level == "advanced":
+        # Provide no auto-filling
+        # if user typed something that exactly matches an artist, fill it
+        for art in artist_names:
+            if art == query:
+                return jsonify({"match": art})
+        return jsonify({"match": ""})
+    elif level == "beginner":
+        # If it appears anywhere, fill the first match:
+        for art in artist_names:
+            if query in art:
+                return jsonify({"match": art})
+        return jsonify({"match": ""})
+    else:
+        # intermediate => if it starts with query
+        for art in artist_names:
+            if art.startswith(query):
+                return jsonify({"match": art})
+        return jsonify({"match": ""})

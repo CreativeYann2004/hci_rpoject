@@ -1,4 +1,3 @@
-# models.py
 from app import db
 import json
 
@@ -27,7 +26,7 @@ class User(db.Model):
 
     def get_level(self):
         """
-        Compute the user's level on-the-fly, based on accuracy. 
+        Compute the user's level on-the-fly, based on accuracy.
         Or you could store it in the DB and update occasionally.
         """
         acc = self.get_accuracy()
