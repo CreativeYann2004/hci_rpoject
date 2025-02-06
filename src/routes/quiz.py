@@ -1,5 +1,7 @@
 import random
+import os
 import spotipy.exceptions
+
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from app import db
 from models import User
@@ -10,6 +12,14 @@ quiz_bp = Blueprint('quiz_bp', __name__)
 # This global list is where we store all the tracks from the user’s chosen playlist
 ALL_TRACKS = []
 
+# NEW: A small list of random music facts
+RANDOM_MUSIC_FACTS = [
+    "The world's longest running performance is John Cage's 'Organ²/ASLSP', scheduled to end in 2640!",
+    "Did you know? The Beatles were originally called The Quarrymen.",
+    "Elvis Presley never performed outside of North America.",
+    "The 'I' in iPod was inspired by the phrase 'Internet', not 'me/myself'.",
+    "Metallica is the first and only band to have performed on all seven continents!"
+]
 
 ########################################
 # Helper: current_user
@@ -67,6 +77,7 @@ def get_personalization_settings(level):
 @require_login
 def dashboard():
     user = current_user()
+
     # If we have a stored playlist ID but haven't fetched tracks yet, do so:
     if session.get('playlist_id') and not ALL_TRACKS:
         sp = get_spotify_client()
@@ -85,6 +96,13 @@ def dashboard():
     missed_count = 0
     if user:
         missed_count = len(user.get_missed_songs())
+
+    # If user hasn't connected Spotify, let's prompt them
+    if not session.get("spotify_token"):
+        session["buddy_message"] = f"Hello, {user.username if user else 'Friend'}! First, connect your Spotify account above!"
+    else:
+        # Otherwise, we can clear or set a different message
+        session["buddy_message"] = ""
 
     return render_template(
         'dashboard.html',
@@ -113,6 +131,8 @@ def select_playlist():
     ]
 
     if request.method == 'GET':
+        # Optionally set a new buddy message
+        session["buddy_message"] = "Pick a playlist or enter a custom ID, friend!"
         try:
             user_playlists = []
             offset = 0
@@ -154,6 +174,10 @@ def select_playlist():
         flash("No valid tracks found. Using fallback tracks...", "info")
     else:
         flash(f"Imported {total} tracks; {added} loaded for guessing!", "success")
+
+    # Clear buddy message or set a new one if you want
+    session["buddy_message"] = "Playlist imported! Let's guess some songs."
+
     return redirect(url_for('quiz_bp.dashboard'))
 
 ########################################
@@ -161,7 +185,7 @@ def select_playlist():
 ########################################
 def _fetch_playlist_tracks(sp, playlist_id, limit=300):
     """
-    Fetches tracks from the selected playlist. 
+    Fetches tracks from the selected playlist.
     Does NOT require a preview_url. We'll rely on the Web Playback SDK.
     """
     offset = 0
@@ -258,6 +282,8 @@ def settings():
     color = session.get('color_theme', 'navy')
     diff = session.get('difficulty', 'normal')
     curr_pl = session.get('playlist_id', '')
+    # Optionally set a buddy message
+    session["buddy_message"] = "Customize your theme and difficulty here!"
     return render_template(
         'settings.html',
         color_theme=color,
@@ -283,6 +309,8 @@ def random_version():
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
 
+    # Optionally set a buddy message
+    session["buddy_message"] = "Random mode: guess the track!"
     return render_template('random_version.html', song=chosen, feedback=None)
 
 ########################################
@@ -327,6 +355,8 @@ def personalized_version():
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
 
+    # Optionally set a buddy message
+    session["buddy_message"] = "Personalized mode: let's see how you do!"
     return render_template(
         'personalized_version.html',
         song=chosen,
@@ -394,10 +424,20 @@ def submit_guess():
         feedback = f"Correct! The track was: {track['artist']} - {track['title']} ({track['year']})"
         if track_id in missed_list:
             missed_list.remove(track_id)
+
+        # If correct AND from random page, add a random fact for the buddy to speak
+        src = request.form.get("source_page", "random")
+        if src == "random":
+            fact = random.choice(RANDOM_MUSIC_FACTS)
+            session["buddy_message"] = fact  # buddy will speak this on the next page
+        else:
+            session["buddy_message"] = "Nice job on that guess!"
     else:
         feedback = f"Wrong! The correct was: {track['artist']} - {track['title']} ({track['year']})"
         if track_id not in missed_list:
             missed_list.append(track_id)
+        # Maybe a gentle prompt
+        session["buddy_message"] = "You'll get it next time!"
 
     user.set_missed_songs(missed_list)
     db.session.commit()

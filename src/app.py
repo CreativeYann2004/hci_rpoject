@@ -1,6 +1,6 @@
 import os
 import datetime
-from flask import Flask
+from flask import Flask, session
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 
@@ -22,6 +22,11 @@ def create_app():
     @app.context_processor
     def inject_now():
         return {"now": datetime.datetime.now}
+
+    # ==== NEW: Provide a default buddy_message so we never get TypeError ====
+    @app.context_processor
+    def inject_buddy_message():
+        return {"buddy_message": session.get("buddy_message", "")}
 
     # Register Blueprints
     from routes.auth import auth_bp
