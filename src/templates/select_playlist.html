@@ -2,51 +2,80 @@
 {% block content %}
 <h2>Select or Import a Spotify Playlist</h2>
 <p class="text-muted">
-  Below you can pick one of your playlists or choose from popular ones. 
-  Or you can specify a custom URI/ID. The system will load tracks with previews.
+  Choose from one of the playlists below or paste a custom Spotify link/URI/ID.
 </p>
 
-<form method="POST">
-  <!-- Official Playlists -->
-  <div class="mb-3">
-    <label class="form-label" for="offPlSelect"><strong>Popular Playlists</strong></label>
-    <select id="offPlSelect" name="chosen_playlist" class="form-select">
-      <option value="">-- None --</option>
-      {% for pl in official_playlists %}
-        <option value="{{ pl.id }}">{{ pl.name }} ({{ pl.id }})</option>
-      {% endfor %}
-    </select>
+<div class="row">
+  <!-- Official (Popular) Playlists Card -->
+  <div class="col-md-6">
+    <div class="card mb-3 shadow-sm">
+      <div class="card-header bg-primary text-white">
+        Popular Playlists
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label for="officialSelect" class="form-label">Select a Popular Playlist</label>
+            <select id="officialSelect" name="chosen_playlist" class="form-select">
+              <option value="">-- Select --</option>
+              {% for pl in official_playlists %}
+                <option value="{{ pl.id }}">{{ pl.name }} ({{ pl.id }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-success w-100">Use Selected Playlist</button>
+        </form>
+      </div>
+    </div>
   </div>
 
-  <!-- User's own playlists -->
-  <div class="mb-3">
-    <label class="form-label" for="userPlSelect"><strong>My Playlists</strong></label>
-    <select id="userPlSelect" name="chosen_playlist" class="form-select">
-      <option value="">-- None --</option>
-      {% for pl in user_playlists %}
-        <option value="{{ pl.id }}">{{ pl.name }} ({{ pl.tracks.total }} tracks)</option>
-      {% endfor %}
-    </select>
-    <small class="form-text text-muted">
-      Selecting both? The second selection overwrites the first. 
-    </small>
+  <!-- Your Playlists Card -->
+  <div class="col-md-6">
+    <div class="card mb-3 shadow-sm">
+      <div class="card-header bg-info text-white">
+        Your Playlists
+      </div>
+      <div class="card-body">
+        {% if user_playlists %}
+          <form method="POST">
+            <div class="mb-3">
+              <label for="userSelect" class="form-label">Select one of your Playlists</label>
+              <select id="userSelect" name="chosen_playlist" class="form-select">
+                <option value="">-- Select --</option>
+                {% for pl in user_playlists %}
+                  <option value="{{ pl.id }}">{{ pl.name }} ({{ pl.tracks.total }} tracks)</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn-success w-100">Use Selected Playlist</button>
+          </form>
+        {% else %}
+          <p>You don’t have any playlists yet. Connect your Spotify account to see them.</p>
+        {% endif %}
+      </div>
+    </div>
   </div>
+</div>
 
-  <!-- Custom text field -->
-  <div class="mb-3">
-    <label for="custom_playlist_id" class="form-label"><strong>Custom Playlist URI/ID</strong></label>
-    <input 
-      type="text" 
-      class="form-control"
-      id="custom_playlist_id"
-      name="custom_playlist_id"
-      placeholder="spotify:playlist:XXXXXXXX"
-    />
-    <small class="form-text text-muted">
-      This will override any selection above if not empty.
-    </small>
+<!-- Custom Playlist Card -->
+<div class="card shadow-sm">
+  <div class="card-header bg-secondary text-white">
+    Custom Playlist
   </div>
-
-  <button class="btn btn-success">Import Playlist</button>
-</form>
+  <div class="card-body">
+    <form method="POST">
+      <div class="mb-3">
+        <label for="custom_playlist_id" class="form-label">Enter Playlist Link/URI/ID</label>
+        <input 
+          type="text" 
+          class="form-control"
+          id="custom_playlist_id"
+          name="custom_playlist_id"
+          placeholder="e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+        />
+      </div>
+      <button type="submit" class="btn btn-primary w-100">Import Custom Playlist</button>
+    </form>
+  </div>
+</div>
 {% endblock %}

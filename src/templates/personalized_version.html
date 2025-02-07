@@ -24,7 +24,7 @@
         {% elif ctype == 'title' %}
           The title starts with <b>{{ song.title[0] }}</b>.
         {% else %}
-          <!-- This is the fix: integer math for the decade -->
+          <!-- integer math for the decade -->
           The year was in the <b>{{ (song.year // 10) * 10 }}s</b>...
         {% endif %}
       </div>

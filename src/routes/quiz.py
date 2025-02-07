@@ -1,15 +1,19 @@
 import random
 import os
+import re
 import spotipy.exceptions
 
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import (
+    Blueprint, render_template, request, redirect, url_for,
+    session, flash, jsonify
+)
 from app import db
 from models import User
 from routes.auth import get_spotify_client
 
 quiz_bp = Blueprint('quiz_bp', __name__)
 
-# This global list is where we store all the tracks from the user’s chosen playlist
+# Global list for all tracks from the chosen playlist
 ALL_TRACKS = []
 
 # A small list of random music facts
@@ -44,12 +48,36 @@ def require_login(f):
     return wrapper
 
 ########################################
+# Function to parse various forms of playlist input
+########################################
+def parse_spotify_playlist_input(user_input):
+    """
+    Accepts a Spotify playlist ID, full Spotify link, or URI.
+    Returns just the playlist ID.
+    e.g.
+      - https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...
+      - spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+      - 37i9dQZF1DXcBWIGoYBM5M
+    """
+    if not user_input:
+        return ""
+    user_input = user_input.strip()
+    # Try matching a full URL or Spotify URI
+    match = re.search(r'(?:spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)', user_input)
+    if match:
+        return match.group(1)
+    # If it is already a plain ID, return it
+    if re.match(r'^[A-Za-z0-9]+$', user_input):
+        return user_input
+    return user_input
+
+########################################
 # Personalized Settings
 ########################################
 def get_personalization_settings(level):
     """
-    Return dict with margin, snippet length, and whether to show hints.
-    Adjust these as you wish for your personalized logic.
+    Returns a dict with the year margin, snippet length, and whether to show hints
+    based on the user's level.
     """
     if level == "beginner":
         return {
@@ -70,13 +98,14 @@ def get_personalization_settings(level):
             "show_hints": False
         }
 
+########################################
+# Buddy Personality Lines
+########################################
 def get_buddy_personality_lines():
     """
-    Example: returns a dict of lines for 'friendly' or 'strict' buddy personalities.
-    We store buddy_personality in session, default to 'friendly'.
+    Returns a dict of buddy messages for 'friendly' or 'strict' personalities.
     """
     personality = session.get('buddy_personality', 'friendly')
-
     lines = {
         'friendly': {
             'correct': [
@@ -106,7 +135,6 @@ def get_buddy_personality_lines():
             ]
         }
     }
-
     return lines.get(personality, lines['friendly'])
 
 ########################################
@@ -116,8 +144,7 @@ def get_buddy_personality_lines():
 @require_login
 def dashboard():
     user = current_user()
-
-    # If we have a stored playlist ID but haven't fetched tracks yet, do so:
+    # If a playlist is already set and tracks have not been loaded yet, load them.
     if session.get('playlist_id') and not ALL_TRACKS:
         sp = get_spotify_client()
         if sp:
@@ -136,11 +163,9 @@ def dashboard():
     if user:
         missed_count = len(user.get_missed_songs())
 
-    # If user hasn't connected Spotify, let's prompt them
     if not session.get("spotify_token"):
         session["buddy_message"] = f"Hello, {user.username if user else 'Friend'}! First, connect your Spotify account above!"
     else:
-        # Otherwise, we can set something else
         session["buddy_message"] = random.choice(get_buddy_personality_lines()['start'])
 
     return render_template(
@@ -153,7 +178,7 @@ def dashboard():
 ########################################
 # Select / Import Playlist
 ########################################
-@quiz_bp.route('/select_playlist', methods=['GET','POST'])
+@quiz_bp.route('/select_playlist', methods=['GET', 'POST'])
 @require_login
 def select_playlist():
     sp = get_spotify_client()
@@ -161,7 +186,7 @@ def select_playlist():
         flash("Connect your Spotify account first!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # Some “popular” playlists the user can pick from
+    # Define some popular (official) playlists
     official_playlists = [
         {"name": "Today’s Top Hits", "id": "37i9dQZF1DXcBWIGoYBM5M"},
         {"name": "Global Top 50",    "id": "37i9dQZEVXbMDoHDwVN2tF"},
@@ -170,8 +195,10 @@ def select_playlist():
     ]
 
     if request.method == 'GET':
-        # Optionally set a new buddy message
-        session["buddy_message"] = "Pick a playlist or enter a custom ID, friend!"
+        session["buddy_message"] = (
+            "Pick a playlist from the options below or paste a custom link/ID. "
+            "I’ll handle the details for you! :)"
+        )
         try:
             user_playlists = []
             offset = 0
@@ -196,16 +223,20 @@ def select_playlist():
                 flash(f"Error fetching playlists: {str(e)}", "danger")
                 return redirect(url_for('quiz_bp.dashboard'))
 
-    # POST: They selected or typed in a playlist
+    # POST: Process submitted data
     chosen_pl = request.form.get('chosen_playlist')
     custom_pl = request.form.get('custom_playlist_id', '').strip()
-    if not chosen_pl and not custom_pl:
+
+    if chosen_pl:
+        selected_playlist = chosen_pl
+    elif custom_pl:
+        selected_playlist = parse_spotify_playlist_input(custom_pl)
+    else:
         flash("No playlist selected!", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    session['playlist_id'] = custom_pl if custom_pl else chosen_pl
+    session['playlist_id'] = selected_playlist
 
-    # Clear the old tracks, fetch the new ones
     ALL_TRACKS.clear()
     total, added = _fetch_playlist_tracks(sp, session['playlist_id'])
     if added == 0:
@@ -214,7 +245,9 @@ def select_playlist():
     else:
         flash(f"Imported {total} tracks; {added} loaded for guessing!", "success")
 
-    session["buddy_message"] = "Playlist imported! Let's guess some songs."
+    session["buddy_message"] = (
+        "Playlist imported successfully! Let's guess some songs together. I can’t wait!"
+    )
     return redirect(url_for('quiz_bp.dashboard'))
 
 ########################################
@@ -303,14 +336,11 @@ def fallback_add_minimum_tracks():
 ########################################
 # SETTINGS
 ########################################
-@quiz_bp.route('/settings', methods=['GET','POST'])
+@quiz_bp.route('/settings', methods=['GET', 'POST'])
 @require_login
 def settings():
     """
-    We add a new 'buddy_personality' setting for the user:
-       - friendly
-       - strict
-       - maybe more in the future
+    Allows the user to update visual settings and set buddy personality.
     """
     user = current_user()
     if request.method == 'POST':
@@ -318,9 +348,9 @@ def settings():
         session['difficulty'] = request.form.get('difficulty', 'normal')
         custom_pl = request.form.get('playlist_id', '').strip()
         if custom_pl:
-            session['playlist_id'] = custom_pl
+            parsed_pl = parse_spotify_playlist_input(custom_pl)
+            session['playlist_id'] = parsed_pl
 
-        # NEW: buddy personality
         chosen_personality = request.form.get('buddy_personality', 'friendly')
         session['buddy_personality'] = chosen_personality
 
@@ -358,7 +388,6 @@ def random_version():
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
 
-    # Optionally set a buddy message
     lines = get_buddy_personality_lines()
     start_line = random.choice(lines['start'])
     session["buddy_message"] = f"Random mode: {start_line}"
@@ -377,24 +406,17 @@ def personalized_version():
         flash("No tracks found and fallback is empty!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # Decide the user's level
     level = user.get_level()  # "beginner", "intermediate", "advanced"
-    settings = get_personalization_settings(level)
-    session["personal_year_margin"] = settings["year_margin"]
-    session["personal_snippet_secs"] = settings["snippet_seconds"]
-    session["personal_show_hints"] = settings["show_hints"]
+    settings_dict = get_personalization_settings(level)
+    session["personal_year_margin"] = settings_dict["year_margin"]
+    session["personal_snippet_secs"] = settings_dict["snippet_seconds"]
+    session["personal_show_hints"] = settings_dict["show_hints"]
 
     missed_list = user.get_missed_songs()
     chosen = None
 
-    # Weighted pick for missed songs
-    # If user is struggling, we might re-show missed songs more frequently
-    # e.g. 80% chance if user is beginner or accuracy < 0.5
     accuracy = user.get_accuracy()
-    if level == "beginner" or accuracy < 0.5:
-        re_show_prob = 0.8
-    else:
-        re_show_prob = 0.5  # intermediate or advanced sees missed songs less often
+    re_show_prob = 0.8 if level == "beginner" or accuracy < 0.5 else 0.5
 
     if missed_list and random.random() < re_show_prob:
         missed_candidates = [t for t in ALL_TRACKS if t["id"] in missed_list]
@@ -408,17 +430,15 @@ def personalized_version():
     ctype = random.choice(["artist", "title", "year"])
     session["challenge_type"] = ctype
 
-    # Buddy line for start
     lines = get_buddy_personality_lines()
     session["buddy_message"] = random.choice(lines['start']) + " Personalized mode: let's see how you do!"
-
     return render_template(
         'personalized_version.html',
         song=chosen,
         missed_count=len(missed_list),
         feedback=None,
-        snippet_secs=settings["snippet_seconds"],
-        show_hints=settings["show_hints"]
+        snippet_secs=settings_dict["snippet_seconds"],
+        show_hints=settings_dict["show_hints"]
     )
 
 ########################################
@@ -456,7 +476,6 @@ def submit_guess():
             else:
                 return guess == actual
 
-    # Check guess
     if challenge == "artist":
         if guess_str == track["artist"].lower():
             guess_correct = True
@@ -479,27 +498,17 @@ def submit_guess():
         if track_id in missed_list:
             missed_list.remove(track_id)
 
-        # random or personal?
         src = request.form.get("source_page", "random")
         if src == "random":
-            # random fact
             fact = random.choice(RANDOM_MUSIC_FACTS)
             session["buddy_message"] = fact
         else:
-            # random line from 'correct'
             session["buddy_message"] = random.choice(lines['correct'])
-
     else:
         feedback = f"Wrong! The correct was: {track['artist']} - {track['title']} ({track['year']})"
         if track_id not in missed_list:
             missed_list.append(track_id)
-
-        # random line from 'wrong'
         session["buddy_message"] = random.choice(lines['wrong'])
-
-        # Optionally re-insert the missed track into ALL_TRACKS to surface it again soon
-        # This is optional if you want them to see that track more often:
-        # ALL_TRACKS.append(track)  # (only if you want duplicates)
 
     user.set_missed_songs(missed_list)
     db.session.commit()
@@ -548,10 +557,9 @@ def scoreboard():
 @require_login
 def tab_autocomplete_artist():
     """
-    In random mode, we do normal logic.
-    In personalized mode, if user is advanced, we give minimal help; 
-       if user is beginner, we give more help (like fill if it partially contains).
-    We'll check 'session["challenge_type"]' or any other indicator.
+    In random mode, we use standard logic.
+    In personalized mode, advanced users get minimal help,
+    while beginners receive partial suggestions.
     """
     query = request.args.get("query", "").strip().lower()
     if not query:
@@ -561,31 +569,20 @@ def tab_autocomplete_artist():
     if not user:
         return jsonify({"match": ""})
 
-    # Check if user is currently in personalized version or random?
-    # We'll guess based on 'challenge_type', or you can store some session var.
-    # Let's see if the user is advanced or not
     level = user.get_level()  # "beginner", "intermediate", "advanced"
-
     artist_names = {t["artist"].lower() for t in ALL_TRACKS}
     
-    # "beginner" gets partial matches if anywhere in the name
-    # "intermediate" gets partial if starts with
-    # "advanced" gets no auto-filling (or just exact match)
     if level == "advanced":
-        # Provide no auto-filling
-        # if user typed something that exactly matches an artist, fill it
         for art in artist_names:
             if art == query:
                 return jsonify({"match": art})
         return jsonify({"match": ""})
     elif level == "beginner":
-        # If it appears anywhere, fill the first match:
         for art in artist_names:
             if query in art:
                 return jsonify({"match": art})
         return jsonify({"match": ""})
     else:
-        # intermediate => if it starts with query
         for art in artist_names:
             if art.startswith(query):
                 return jsonify({"match": art})

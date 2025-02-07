@@ -90,38 +90,25 @@
          src="data:audio/wav;base64,UklGRm4AAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YU0AA"
          preload="auto"></audio>
 
-        <div class="jukebox" id="jukebox" 
-        style="position: fixed; top: 50%; right: 60px; transform: translateY(-50%);">
-    
-    <!-- Additional silver bands on left & right -->
+  <div class="jukebox" id="jukebox" 
+       style="position: fixed; top: 50%; right: 60px; transform: translateY(-50%); z-index:9999;">
     <div class="silver-band left"></div>
     <div class="silver-band right"></div>
-
-    <!-- Some decorative lines near top -->
     <div class="decorative-line"></div>
-
-    <!-- Face -->
     <div class="face">
       <div class="eye left"><div class="pupil"></div></div>
       <div class="eye right"><div class="pupil"></div></div>
       <div class="mouth" id="mouth"></div>
     </div>
-
-    <!-- Grille & speaker & red button -->
     <div class="grille"></div>
     <div class="speaker"></div>
     <div class="button"></div>
-
-    <!-- Arms & Hands -->
     <div class="arm arm-left"><div class="hand"></div></div>
     <div class="arm arm-right"><div class="hand"></div></div>
-
-    <!-- Legs & Shoes -->
     <div class="leg leg-left"><div class="shoe"></div></div>
     <div class="leg leg-right"><div class="shoe"></div></div>
   </div>
 
-  <!-- Insert the buddy's CSS (for brevity, we inline it below) -->
   <style>
     /* ====== BUDDY (JUKEBOX) STYLES ====== */
     .jukebox {
@@ -133,7 +120,6 @@
       animation: dance 3s infinite ease-in-out;
       transform-origin: center bottom;
       cursor: pointer;
-      z-index: 9999; /* appear above page elements */
     }
     .jukebox::before {
       content: '';
@@ -326,17 +312,6 @@
       50%  { transform: rotate(6deg); }
       100% { transform: rotate(10deg); }
     }
-    @keyframes funnyArms {
-      0%   { transform: rotate(10deg) translateY(0); }
-      25%  { transform: rotate(0deg) translateY(-6px); }
-      50%  { transform: rotate(-20deg) translateY(4px); }
-      75%  { transform: rotate(20deg) translateY(-6px); }
-      100% { transform: rotate(10deg) translateY(0); }
-    }
-    .arm-left.funny-dance,
-    .arm-right.funny-dance {
-      animation: funnyArms 2s ease-in-out forwards;
-    }
     .leg {
       position: absolute;
       width: 10px;
@@ -437,8 +412,6 @@
     });
 
     /* ========== RANDOM FUNNY ARM WAVES ========== */
-    const armLeft = null;
-    const armRight = null;
     window.addEventListener('DOMContentLoaded', () => {
       const armLeftElem = document.querySelector('.arm-left');
       const armRightElem = document.querySelector('.arm-right');
@@ -471,7 +444,7 @@
       if (!mouth) return;
 
       function triggerMouthBlip() {
-        if (isTalking) return; // skip if currently talking
+        if (isTalking) return;
         mouth.classList.add('blip');
         setTimeout(() => {
           mouth.classList.remove('blip');
@@ -505,7 +478,6 @@
     /* ========== SPEAKING FEATURE ========== */
     function speakMessage(text) {
       if (!text) return;
-
       const jukebox = document.getElementById('jukebox');
       const mouth = document.getElementById('mouth');
       const beepAudio = document.getElementById('beep');
@@ -525,7 +497,7 @@
         bubble.style.left = (box.left - bRect.width - 40) + "px";
       });
 
-      // Animate mouth as "talking"
+      // Animate mouth
       isTalking = true;
       mouth.classList.add('talk');
 
@@ -539,10 +511,8 @@
         index++;
         if (index >= words.length) {
           clearInterval(interval);
-          // done speaking
           mouth.classList.remove('talk');
           isTalking = false;
-          // remove bubble after short delay
           setTimeout(() => {
             if (bubble.parentNode) {
               bubble.parentNode.removeChild(bubble);

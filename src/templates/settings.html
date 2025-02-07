@@ -7,7 +7,11 @@
     <label class="form-label">Color Theme</label>
     <select name="color_theme" class="form-select">
       <option value="navy" {% if session.color_theme == 'navy' %}selected{% endif %}>Navy</option>
-      <option value="light" {% if session.color_theme == 'light' %}selected{% endif %}>Light</option>
+      <option value="light" {% if current_diff == 'light' %}selected{% endif %}>Light</option>
+        <!-- Note: This may be a small bug in your original code; 
+             'light' is used as a theme, but 'session.color_theme' is used above.
+             We'll just be consistent that 'light' is valid. -->
+      <option value="light" {% if session.color_theme == 'light' %}selected{% endif %}>Light (Double-check)</option>
     </select>
   </div>
 
@@ -26,12 +30,20 @@
       type="text" 
       name="playlist_id" 
       class="form-control"
-      placeholder="e.g. spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+      placeholder="e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
       value="{{ current_playlist|default('') }}"
     />
     <small class="form-text text-muted">
-      If blank, we use your existing or default playlist.
+      Paste the full link or ID; this will override your old playlist if not blank.
     </small>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Buddy Personality</label>
+    <select name="buddy_personality" class="form-select">
+      <option value="friendly" {% if buddy_personality == 'friendly' %}selected{% endif %}>Friendly</option>
+      <option value="strict" {% if buddy_personality == 'strict' %}selected{% endif %}>Strict</option>
+    </select>
   </div>
 
   <button class="btn btn-primary">Save Settings</button>

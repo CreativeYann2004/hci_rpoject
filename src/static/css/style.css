@@ -1,5 +1,6 @@
 body {
-  background-color: #f5f5f5;
+  /* Subtle gradient background */
+  background: linear-gradient(180deg, #f5f7fa 0%, #d4dce4 100%);
   margin: 0;
   padding: 0;
   font-family: "Helvetica Neue", Arial, sans-serif;
@@ -7,7 +8,7 @@ body {
 
 /* Light theme override */
 .light-theme {
-  background-color: #ffffff;
+  background: #ffffff;
   color: #000000;
 }
 
@@ -25,6 +26,7 @@ body {
   transition: transform 0.2s ease, background-color 0.2s ease;
   padding: 0.5rem 1rem;
   margin-right: 0.5rem;
+  border-radius: 4px; /* Slight rounding */
 }
 
 .quiz-btn:hover {
@@ -47,4 +49,9 @@ footer .container {
 /* Subtle table borders */
 .table-bordered > :not(caption) > * > * {
   border-color: #ddd !important;
+}
+
+/* Alerts slight tweak */
+.alert {
+  border-radius: 4px;
 }
