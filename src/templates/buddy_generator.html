@@ -1,0 +1,74 @@
+@quiz_bp.route('/buddy_generator', methods=['GET', 'POST'])
+@require_login
+def buddy_generator():
+    sp = get_spotify_client()
+    if not sp:
+        flash("Spotify not connected. Please connect first!", "warning")
+        return redirect(url_for('quiz_bp.dashboard'))
+
+    lines = get_buddy_personality_lines()
+    session["buddy_message"] = random.choice(lines['start']) + " Let's build a random playlist!"
+
+    allowed_genres = {
+        "pop", "rock", "dance", "hip-hop", "jazz",
+        "metal", "country", "r&b", "edm", "classical",
+        "reggae", "blues", "indie", "latin"
+    }
+
+    if request.method == 'POST':
+        raw_genre = request.form.get("genre", "pop").strip().lower()
+        # Remove any colons, semicolons, etc. that might break the request
+        cleaned_genre = raw_genre.replace(":", "").replace(";", "").replace("'", "")
+        
+        if cleaned_genre not in allowed_genres:
+            genre = "pop"
+            flash("Unknown or unsupported genre. Falling back to 'pop'.", "info")
+        else:
+            genre = cleaned_genre
+
+        # Limit track count to 1..20
+        try:
+            num_tracks = int(request.form.get("num_tracks", 5))
+        except:
+            num_tracks = 5
+        num_tracks = max(1, min(num_tracks, 20))
+
+        try:
+            recs = sp.recommendations(
+                seed_genres=[genre],
+                limit=num_tracks,
+                market="from_token"  # or "US"
+            )
+            tracks = recs.get('tracks', [])
+            buddy_tracks = []
+            for t in tracks:
+                tid = t.get('id')
+                name = t.get('name', 'Unknown')
+                artist_objs = t.get('artists', [{}])
+                artist = artist_objs[0].get('name', 'Unknown')
+                preview_url = t.get('preview_url')
+                album = t.get('album', {})
+                release_date = album.get('release_date', '1900')
+                year = 1900
+                if release_date[:4].isdigit():
+                    year = int(release_date[:4])
+
+                buddy_tracks.append({
+                    "id": tid,
+                    "title": name,
+                    "artist": artist,
+                    "year": year,
+                    "preview_url": preview_url
+                })
+
+            session["buddy_tracks"] = buddy_tracks
+            session["buddy_kept"] = []
+            flash(f"Fetched {len(buddy_tracks)} tracks for genre '{genre}'.", "info")
+            return redirect(url_for('quiz_bp.buddy_tinder'))
+
+        except spotipy.exceptions.SpotifyException as e:
+            flash(f"Error fetching recommendations: {str(e)}", "danger")
+            return redirect(url_for('quiz_bp.dashboard'))
+
+    # GET => show the form
+    return render_template("buddy_generator.html")

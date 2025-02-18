@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Finalize Your Playlist</h2>
+
+{% if kept and kept|length > 0 %}
+  <p>You kept <strong>{{ kept|length }}</strong> tracks.</p>
+  <ul>
+    {% for t in kept %}
+      <li>{{ t.artist }} - {{ t.title }} ({{ t.year }})</li>
+    {% endfor %}
+  </ul>
+  <hr>
+
+  <form method="POST">
+    <div class="mb-3">
+      <label class="form-label">Playlist Name</label>
+      <input type="text" name="playlist_name" class="form-control" placeholder="My Buddy Playlist">
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Playlist Description</label>
+      <textarea name="playlist_desc" class="form-control" rows="2">Created by Buddy Generator</textarea>
+    </div>
+    <button class="btn btn-success" name="save">Save to Spotify</button>
+    <button class="btn btn-secondary" name="discard">Discard</button>
+  </form>
+
+{% else %}
+  <p>You didn’t keep any tracks or no tracks left to finalize!</p>
+  <form method="POST">
+    <button class="btn btn-secondary" name="discard">Back to Dashboard</button>
+  </form>
+{% endif %}
+{% endblock %}

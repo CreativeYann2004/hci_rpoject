@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Rate this Track</h2>
+
+{% if track %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <h5 class="card-title">{{ track.title }}</h5>
+      <p class="card-text">
+        Artist: {{ track.artist }}<br>
+        Year: {{ track.year }}
+      </p>
+      {% if track.preview_url %}
+        <!-- Minimal audio preview -->
+        <audio controls style="width: 100%;">
+          <source src="{{ track.preview_url }}" type="audio/mpeg">
+          Your browser does not support the audio element.
+        </audio>
+      {% else %}
+        <p><em>No preview available!</em></p>
+      {% endif %}
+    </div>
+  </div>
+
+  <form action="{{ url_for('quiz_bp.buddy_tinder_choice', action='keep') }}" method="POST" style="display:inline;">
+    <button class="btn btn-success">Keep</button>
+  </form>
+  <form action="{{ url_for('quiz_bp.buddy_tinder_choice', action='trash') }}" method="POST" style="display:inline;">
+    <button class="btn btn-danger">Trash</button>
+  </form>
+{% else %}
+  <p>No track loaded! <a href="{{ url_for('quiz_bp.buddy_finalize') }}">Go Finalize</a></p>
+{% endif %}
+{% endblock %}

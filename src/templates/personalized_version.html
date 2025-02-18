@@ -1,57 +1,61 @@
 {% extends "layout.html" %}
 {% block content %}
-<h2>Personalized UI Version</h2>
+<h2>Adaptive Personalized UI</h2>
 
 {% if feedback %}
   <div class="alert alert-info">{{ feedback }}</div>
-  <a class="btn btn-primary" href="{{ url_for('quiz_bp.personalized_version') }}">Try Another Snippet</a>
+  <a class="btn btn-primary" href="{{ url_for('quiz_bp.personalized_version') }}">
+    Try Another
+  </a>
 {% else %}
-  <p class="text-muted">Missed Songs in DB: {{ missed_count }}</p>
-
   {% if song %}
-    <!-- Minimal cover-art embed with hidden track info -->
-    <div class="mb-3">
+    <!-- Example cropped embed like random_version.html -->
+    <div style="
+      width:50px;
+      height:50px;
+      position:relative;
+      overflow:hidden;
+      border:1px solid #ccc;
+      margin-bottom:1rem;
+    ">
       <iframe
         src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
-        width="300"
-        height="300"
-        allow="encrypted-media"
+        width="600"
+        height="600"
         frameborder="0"
-        style="border:none;overflow:hidden"
-      ></iframe>
+        style="position:absolute; top:-265px; left:-511px;"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
+      </iframe>
     </div>
 
-    {% if show_hints %}
+    {% if hints and hints|length > 0 %}
       <div class="alert alert-warning">
-        <strong>Hint:</strong>
-        {% set ctype = session.challenge_type %}
-        {% if ctype == 'artist' %}
-          The artist’s name starts with <b>{{ song.artist[0] }}</b>.
-        {% elif ctype == 'title' %}
-          The title starts with <b>{{ song.title[0] }}</b>.
-        {% else %}
-          The release year is in the <b>{{ (song.year // 10) * 10 }}s</b>.
-        {% endif %}
+        <strong>Hint{{ hints|length > 1 and 's' or '' }}:</strong>
+        <ul>
+        {% for h in hints %}
+          <li>{{ h }}</li>
+        {% endfor %}
+        </ul>
       </div>
     {% endif %}
 
-    <form method="POST" action="{{ url_for('quiz_bp.submit_guess') }}">
-      {% set ctype = session.challenge_type %}
-      {% if ctype == 'title' %}
-        <p>Guess the <strong>Song Title</strong>:</p>
-        <input type="text" name="guess" id="guess" class="form-control" required>
-      {% elif ctype == 'year' %}
-        <p>Guess the <strong>Release Year</strong>:</p>
-        <input type="text" name="guess" class="form-control" required>
-      {% else %}
+    {# Challenge type is in session.challenge_type. Let's just show a single input #}
+    {% set ctype = session.challenge_type %}
+    <form method="POST" action="{{ url_for('quiz_bp.submit_guess_personalized') }}">
+      {% if ctype == 'artist' %}
         <p>Guess the <strong>Artist</strong>:</p>
-        <input type="text" name="guess" id="guess" class="form-control" required>
+        <input type="text" name="guess" id="guess" class="form-control" placeholder="Artist name..." required>
+      {% elif ctype == 'title' %}
+        <p>Guess the <strong>Title</strong>:</p>
+        <input type="text" name="guess" class="form-control" placeholder="Song Title..." required>
+      {% else %}
+        <p>Guess the <strong>Release Year</strong>:</p>
+        <input type="text" name="guess" class="form-control" placeholder="e.g. 1999" required>
       {% endif %}
-      <input type="hidden" name="source_page" value="personalized">
       <button class="btn btn-success mt-2">Submit Guess</button>
     </form>
   {% else %}
-    <p><em>No track available.</em></p>
+    <p><em>No track selected. Try again!</em></p>
   {% endif %}
 {% endif %}
 {% endblock %}

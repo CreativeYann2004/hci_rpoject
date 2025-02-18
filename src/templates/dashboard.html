@@ -13,15 +13,16 @@
     </p>
 
     <button 
-      class="btn quiz-btn me-2" 
-      onclick="window.location='{{ url_for('quiz_bp.random_version') }}'">
-      Random UI
+    class="btn quiz-btn me-2"
+    onclick="window.location='{{ url_for('quiz_bp.choose_quiz') }}'">
+    Play Guessing Game
     </button>
 
+    
     <button 
-      class="btn quiz-btn me-2" 
-      onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
-      Personalized UI
+    class="btn quiz-btn mt-2"
+    onclick="window.location='{{ url_for('quiz_bp.buddy_generator') }}'">
+    Buddy's Random Playlist Generator
     </button>
 
     <button 
