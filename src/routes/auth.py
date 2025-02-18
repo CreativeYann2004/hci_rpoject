@@ -11,15 +11,17 @@ import os
 
 auth_bp = Blueprint('auth_bp', __name__)
 
-# Updated scopes for the Web Playback SDK
+########################
+# SCOPES
+########################
 SPOTIFY_SCOPES = (
     "user-read-private "
     "user-read-email "
     "playlist-read-private "
     "playlist-read-collaborative "
-    "streaming "
-    "user-read-playback-state "
-    "user-modify-playback-state"
+    "playlist-modify-public "
+    "playlist-modify-private "
+    "user-read-recently-played"
 )
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -100,6 +102,9 @@ def get_spotify_client():
         return None
     return spotipy.Spotify(auth=token)
 
+########################
+# SPOTIFY LOGIN
+########################
 @auth_bp.route('/spotify/login')
 @require_login
 def spotify_login():
@@ -116,6 +121,9 @@ def spotify_login():
     url = "https://accounts.spotify.com/authorize?" + urlencode(params)
     return redirect(url)
 
+########################
+# SPOTIFY CALLBACK
+########################
 @auth_bp.route('/spotify/callback')
 def spotify_callback():
     """Step 2: Spotify redirects here with 'code'. Exchange for access token."""
@@ -143,7 +151,7 @@ def spotify_callback():
         flash("No access token from Spotify!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # Save token in session
+    # For production, store/refresh tokens properly. This is simplified.
     session["spotify_token"] = access_token
-    flash("Spotify connected! You can now import your playlists.", "success")
+    flash("Spotify connected! You can now import your playlists or view recent tracks.", "success")
     return redirect(url_for('quiz_bp.dashboard'))

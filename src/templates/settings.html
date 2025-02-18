@@ -7,11 +7,7 @@
     <label class="form-label">Color Theme</label>
     <select name="color_theme" class="form-select">
       <option value="navy" {% if session.color_theme == 'navy' %}selected{% endif %}>Navy</option>
-      <option value="light" {% if current_diff == 'light' %}selected{% endif %}>Light</option>
-        <!-- Note: This may be a small bug in your original code; 
-             'light' is used as a theme, but 'session.color_theme' is used above.
-             We'll just be consistent that 'light' is valid. -->
-      <option value="light" {% if session.color_theme == 'light' %}selected{% endif %}>Light (Double-check)</option>
+      <option value="light" {% if session.color_theme == 'light' %}selected{% endif %}>Light</option>
     </select>
   </div>
 

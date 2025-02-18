@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Your Recently Played Tracks</h2>
+
+{% if tracks and tracks|length > 0 %}
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Artist</th>
+        <th>Played At</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tracks %}
+      <tr>
+        <td>{{ t.title }}</td>
+        <td>{{ t.artist }}</td>
+        <td>{{ t.played_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="text-muted">No recent tracks found!</p>
+{% endif %}
+{% endblock %}

@@ -18,7 +18,7 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
 
-    # Provide "now" to all templates (e.g. {{ now().year }} )
+    # Provide "now" to all templates (e.g. {{ now().year }})
     @app.context_processor
     def inject_now():
         return {"now": datetime.datetime.now}
@@ -39,7 +39,3 @@ def create_app():
         db.create_all()
 
     return app
-
-if __name__ == '__main__':
-    app = create_app()
-    app.run(debug=True)

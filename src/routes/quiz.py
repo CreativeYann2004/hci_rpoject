@@ -1,8 +1,6 @@
 import random
-import os
 import re
 import spotipy.exceptions
-
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
     session, flash, jsonify
@@ -13,10 +11,8 @@ from routes.auth import get_spotify_client
 
 quiz_bp = Blueprint('quiz_bp', __name__)
 
-# Global list for all tracks from the chosen playlist
 ALL_TRACKS = []
 
-# A small list of random music facts
 RANDOM_MUSIC_FACTS = [
     "The world's longest running performance is John Cage's 'Organ²/ASLSP', scheduled to end in 2640!",
     "Did you know? The Beatles were originally called The Quarrymen.",
@@ -26,7 +22,7 @@ RANDOM_MUSIC_FACTS = [
 ]
 
 ########################################
-# Helper: current_user
+# Utility: current_user & require_login
 ########################################
 def current_user():
     uid = session.get("user_id")
@@ -34,9 +30,6 @@ def current_user():
         return None
     return User.query.get(uid)
 
-########################################
-# Require login
-########################################
 def require_login(f):
     from functools import wraps
     @wraps(f)
@@ -48,63 +41,35 @@ def require_login(f):
     return wrapper
 
 ########################################
-# Function to parse various forms of playlist input
+# parse_spotify_playlist_input
 ########################################
 def parse_spotify_playlist_input(user_input):
     """
     Accepts a Spotify playlist ID, full Spotify link, or URI.
     Returns just the playlist ID.
-    e.g.
-      - https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...
-      - spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
-      - 37i9dQZF1DXcBWIGoYBM5M
     """
     if not user_input:
         return ""
     user_input = user_input.strip()
-    # Try matching a full URL or Spotify URI
     match = re.search(r'(?:spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)', user_input)
     if match:
         return match.group(1)
-    # If it is already a plain ID, return it
     if re.match(r'^[A-Za-z0-9]+$', user_input):
         return user_input
     return user_input
 
 ########################################
-# Personalized Settings
+# Personalized & Buddy lines
 ########################################
 def get_personalization_settings(level):
-    """
-    Returns a dict with the year margin, snippet length, and whether to show hints
-    based on the user's level.
-    """
     if level == "beginner":
-        return {
-            "year_margin": 3,
-            "snippet_seconds": 30,
-            "show_hints": True
-        }
+        return {"year_margin": 3, "snippet_seconds": 30, "show_hints": True}
     elif level == "intermediate":
-        return {
-            "year_margin": 1,
-            "snippet_seconds": 15,
-            "show_hints": False
-        }
+        return {"year_margin": 1, "snippet_seconds": 15, "show_hints": False}
     else:  # advanced
-        return {
-            "year_margin": 0,
-            "snippet_seconds": 5,
-            "show_hints": False
-        }
+        return {"year_margin": 0, "snippet_seconds": 5, "show_hints": False}
 
-########################################
-# Buddy Personality Lines
-########################################
 def get_buddy_personality_lines():
-    """
-    Returns a dict of buddy messages for 'friendly' or 'strict' personalities.
-    """
     personality = session.get('buddy_personality', 'friendly')
     lines = {
         'friendly': {
@@ -144,29 +109,28 @@ def get_buddy_personality_lines():
 @require_login
 def dashboard():
     user = current_user()
-    # If a playlist is already set and tracks have not been loaded yet, load them.
+    # If we have a playlist in session, but haven't yet fetched tracks, do so:
     if session.get('playlist_id') and not ALL_TRACKS:
         sp = get_spotify_client()
         if sp:
             try:
                 total, added = _fetch_playlist_tracks(sp, session['playlist_id'])
-                if added == 0:
-                    fallback_add_minimum_tracks()
-                    flash("No valid tracks found in that playlist. Using fallback tracks...", "info")
+                # CHANGED: We do not fallback anymore, even if added == 0
+                flash(f"Imported {added} tracks from that playlist.", "info")
             except spotipy.exceptions.SpotifyException as e:
                 flash(f"Error auto-fetching playlist: {str(e)}", "danger")
-                fallback_add_minimum_tracks()
-        else:
-            fallback_add_minimum_tracks()
+        # else: no token => do nothing
+    # end if
 
     missed_count = 0
     if user:
         missed_count = len(user.get_missed_songs())
 
     if not session.get("spotify_token"):
-        session["buddy_message"] = f"Hello, {user.username if user else 'Friend'}! First, connect your Spotify account above!"
+        session["buddy_message"] = f"Hello, {user.username if user else 'Friend'}! Connect your Spotify account above!"
     else:
-        session["buddy_message"] = random.choice(get_buddy_personality_lines()['start'])
+        lines = get_buddy_personality_lines()
+        session["buddy_message"] = lines['start'][0]
 
     return render_template(
         'dashboard.html',
@@ -176,7 +140,7 @@ def dashboard():
     )
 
 ########################################
-# Select / Import Playlist
+# MAIN: Select / Import Playlist
 ########################################
 @quiz_bp.route('/select_playlist', methods=['GET', 'POST'])
 @require_login
@@ -186,7 +150,6 @@ def select_playlist():
         flash("Connect your Spotify account first!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # Define some popular (official) playlists
     official_playlists = [
         {"name": "Today’s Top Hits", "id": "37i9dQZF1DXcBWIGoYBM5M"},
         {"name": "Global Top 50",    "id": "37i9dQZEVXbMDoHDwVN2tF"},
@@ -195,10 +158,7 @@ def select_playlist():
     ]
 
     if request.method == 'GET':
-        session["buddy_message"] = (
-            "Pick a playlist from the options below or paste a custom link/ID. "
-            "I’ll handle the details for you! :)"
-        )
+        session["buddy_message"] = "Pick a playlist or paste a custom link."
         try:
             user_playlists = []
             offset = 0
@@ -223,7 +183,6 @@ def select_playlist():
                 flash(f"Error fetching playlists: {str(e)}", "danger")
                 return redirect(url_for('quiz_bp.dashboard'))
 
-    # POST: Process submitted data
     chosen_pl = request.form.get('chosen_playlist')
     custom_pl = request.form.get('custom_playlist_id', '').strip()
 
@@ -237,37 +196,24 @@ def select_playlist():
 
     session['playlist_id'] = selected_playlist
 
+    # Clear old tracks from memory, let /dashboard auto-fetch them
     ALL_TRACKS.clear()
-    total, added = _fetch_playlist_tracks(sp, session['playlist_id'])
-    if added == 0:
-        fallback_add_minimum_tracks()
-        flash("No valid tracks found. Using fallback tracks...", "info")
-    else:
-        flash(f"Imported {total} tracks; {added} loaded for guessing!", "success")
-
-    session["buddy_message"] = (
-        "Playlist imported successfully! Let's guess some songs together. I can’t wait!"
-    )
+    flash("Playlist selected! Tracks will load on the dashboard.", "success")
     return redirect(url_for('quiz_bp.dashboard'))
 
 ########################################
-# Fetch Playlist Tracks
+# _fetch_playlist_tracks
+# CHANGED: No skipping if a track has no snippet. We store them anyway.
 ########################################
 def _fetch_playlist_tracks(sp, playlist_id, limit=300):
-    """
-    Fetches tracks from the selected playlist.
-    """
     offset = 0
     total = 0
     added = 0
     global ALL_TRACKS
 
     while offset < limit:
-        try:
-            data = sp.playlist_items(playlist_id, limit=50, offset=offset)
-        except Exception as e:
-            print(f"[ERROR] offset={offset}: {e}")
-            break
+        # You can pass market="from_token" or omit if you want:
+        data = sp.playlist_items(playlist_id, limit=50, offset=offset, market="from_token")
 
         items = data.get('items', [])
         if not items:
@@ -290,17 +236,22 @@ def _fetch_playlist_tracks(sp, playlist_id, limit=300):
             artists = track.get('artists', [{"name": "Unknown Artist"}])
             artist_name = artists[0].get('name', '???')
 
+            preview_url = track.get('preview_url')  # might be None
             album_info = track.get('album', {})
             release_date = album_info.get('release_date', '1900-01-01')
             year = 1900
             if release_date[:4].isdigit():
                 year = int(release_date[:4])
 
+            # We no longer attempt fallback search or skip. 
+            # Just store the track, even if preview_url is None.
+
             ALL_TRACKS.append({
                 "id": track_id,
                 "title": name,
                 "artist": artist_name,
-                "year": year
+                "year": year,
+                "preview_url": preview_url
             })
             added += 1
             total += 1
@@ -312,26 +263,9 @@ def _fetch_playlist_tracks(sp, playlist_id, limit=300):
     return total, added
 
 ########################################
-# Fallback Tracks
+# No fallback_add_minimum_tracks needed
 ########################################
-def fallback_add_minimum_tracks():
-    global ALL_TRACKS
-    fallback_songs = [
-        {
-            "id": "4uLU6hMCjMI75M1A2tKUQC",  # Rick Astley
-            "title": "Never Gonna Give You Up",
-            "artist": "Rick Astley",
-            "year": 1987
-        },
-        {
-            "id": "3n3Ppam7vgaVa1iaRUc9Lp",  # The Killers
-            "title": "Mr. Brightside",
-            "artist": "The Killers",
-            "year": 2003
-        }
-    ]
-    if not ALL_TRACKS:
-        ALL_TRACKS.extend(fallback_songs)
+
 
 ########################################
 # SETTINGS
@@ -339,9 +273,6 @@ def fallback_add_minimum_tracks():
 @quiz_bp.route('/settings', methods=['GET', 'POST'])
 @require_login
 def settings():
-    """
-    Allows the user to update visual settings and set buddy personality.
-    """
     user = current_user()
     if request.method == 'POST':
         session['color_theme'] = request.form.get('color_theme', 'navy')
@@ -378,9 +309,7 @@ def settings():
 @require_login
 def random_version():
     if not ALL_TRACKS:
-        fallback_add_minimum_tracks()
-    if not ALL_TRACKS:
-        flash("No tracks found and fallback is empty!", "danger")
+        flash("No tracks found in memory. Please select or import a playlist first.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
     chosen = random.choice(ALL_TRACKS)
@@ -401,12 +330,10 @@ def random_version():
 def personalized_version():
     user = current_user()
     if not ALL_TRACKS:
-        fallback_add_minimum_tracks()
-    if not ALL_TRACKS:
-        flash("No tracks found and fallback is empty!", "danger")
+        flash("No tracks found. Please select or import a playlist first.", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    level = user.get_level()  # "beginner", "intermediate", "advanced"
+    level = user.get_level()
     settings_dict = get_personalization_settings(level)
     session["personal_year_margin"] = settings_dict["year_margin"]
     session["personal_snippet_secs"] = settings_dict["snippet_seconds"]
@@ -462,9 +389,8 @@ def submit_guess():
     guess_str = request.form.get("guess", "").strip().lower()
     guess_correct = False
 
-    personal_margin = session.get("personal_year_margin")
-
     def within_year_margin_dynamic(guess, actual):
+        personal_margin = session.get("personal_year_margin")
         if personal_margin is not None:
             return abs(guess - actual) <= personal_margin
         else:
@@ -497,7 +423,6 @@ def submit_guess():
         feedback = f"Correct! The track was: {track['artist']} - {track['title']} ({track['year']})"
         if track_id in missed_list:
             missed_list.remove(track_id)
-
         src = request.form.get("source_page", "random")
         if src == "random":
             fact = random.choice(RANDOM_MUSIC_FACTS)
@@ -519,9 +444,6 @@ def submit_guess():
     else:
         return redirect(url_for('quiz_bp.personalized_feedback'))
 
-########################################
-# FEEDBACK ROUTES
-########################################
 @quiz_bp.route('/random_feedback')
 @require_login
 def random_feedback():
@@ -541,7 +463,6 @@ def personalized_feedback():
 @require_login
 def scoreboard():
     users = User.query.all()
-
     def accuracy(u):
         if u.total_attempts == 0:
             return 0
@@ -551,27 +472,21 @@ def scoreboard():
     return render_template('scoreboard.html', all_users=sorted_users)
 
 ########################################
-# AUTOCOMPLETE for Artist
+# AUTOCOMPLETE
 ########################################
 @quiz_bp.route('/autocomplete/tab_artist')
 @require_login
 def tab_autocomplete_artist():
-    """
-    In random mode, we use standard logic.
-    In personalized mode, advanced users get minimal help,
-    while beginners receive partial suggestions.
-    """
     query = request.args.get("query", "").strip().lower()
     if not query:
         return jsonify({"match": ""})
-
     user = current_user()
     if not user:
         return jsonify({"match": ""})
 
-    level = user.get_level()  # "beginner", "intermediate", "advanced"
-    artist_names = {t["artist"].lower() for t in ALL_TRACKS}
-    
+    level = user.get_level()
+    artist_names = {t["artist"].lower() for t in ALL_TRACKS if "artist" in t}
+
     if level == "advanced":
         for art in artist_names:
             if art == query:
@@ -587,3 +502,34 @@ def tab_autocomplete_artist():
             if art.startswith(query):
                 return jsonify({"match": art})
         return jsonify({"match": ""})
+
+########################################
+# RECENT
+########################################
+@quiz_bp.route('/recent')
+@require_login
+def recent_played():
+    sp = get_spotify_client()
+    if not sp:
+        flash("Connect your Spotify account first!", "danger")
+        return redirect(url_for('quiz_bp.dashboard'))
+    try:
+        results = sp.current_user_recently_played(limit=20)
+    except spotipy.exceptions.SpotifyException as e:
+        flash(f"Error fetching recent tracks: {str(e)}", "danger")
+        return redirect(url_for('quiz_bp.dashboard'))
+
+    tracks = []
+    for item in results.get('items', []):
+        track = item.get('track')
+        if track:
+            tname = track.get('name', 'Unknown')
+            artists = track.get('artists', [])
+            aname = artists[0]['name'] if artists else 'Unknown'
+            played_at = item.get('played_at', '')
+            tracks.append({
+                'title': tname,
+                'artist': aname,
+                'played_at': played_at
+            })
+    return render_template('recent.html', tracks=tracks)

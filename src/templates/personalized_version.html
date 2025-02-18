@@ -9,14 +9,20 @@
   <p class="text-muted">Missed Songs in DB: {{ missed_count }}</p>
 
   {% if song %}
-    <p><strong>Press the Play button to start playback:</strong>
-      <br>(Snippet will pause after {{ snippet_secs }} seconds if you are advanced!)</p>
-    <button id="playButton" class="btn btn-primary" data-track-id="{{ song.id }}">
-      Play
-    </button>
+    <!-- Minimal cover-art embed with hidden track info -->
+    <div class="mb-3">
+      <iframe
+        src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
+        width="300"
+        height="300"
+        allow="encrypted-media"
+        frameborder="0"
+        style="border:none;overflow:hidden"
+      ></iframe>
+    </div>
 
     {% if show_hints %}
-      <div class="alert alert-warning mt-3">
+      <div class="alert alert-warning">
         <strong>Hint:</strong>
         {% set ctype = session.challenge_type %}
         {% if ctype == 'artist' %}
@@ -24,14 +30,13 @@
         {% elif ctype == 'title' %}
           The title starts with <b>{{ song.title[0] }}</b>.
         {% else %}
-          <!-- integer math for the decade -->
-          The year was in the <b>{{ (song.year // 10) * 10 }}s</b>...
+          The release year is in the <b>{{ (song.year // 10) * 10 }}s</b>.
         {% endif %}
       </div>
     {% endif %}
 
-    {% set ctype = session.challenge_type %}
     <form method="POST" action="{{ url_for('quiz_bp.submit_guess') }}">
+      {% set ctype = session.challenge_type %}
       {% if ctype == 'title' %}
         <p>Guess the <strong>Song Title</strong>:</p>
         <input type="text" name="guess" id="guess" class="form-control" required>
@@ -49,87 +54,4 @@
     <p><em>No track available.</em></p>
   {% endif %}
 {% endif %}
-
-<!-- Spotify Web Playback SDK -->
-<script src="https://sdk.scdn.co/spotify-player.js"></script>
-<script>
-window.onSpotifyWebPlaybackSDKReady = () => {
-  const token = "{{ session.spotify_token }}";
-  if (!token) {
-    console.error("No Spotify token available");
-    return;
-  }
-  const player = new Spotify.Player({
-    name: 'Quiz Web Player (Personalized)',
-    getOAuthToken: cb => { cb(token); }
-  });
-
-  player.addListener('initialization_error', ({ message }) => console.error(message));
-  player.addListener('authentication_error', ({ message }) => console.error(message));
-  player.addListener('account_error', ({ message }) => console.error(message));
-  player.addListener('playback_error', ({ message }) => console.error(message));
-
-  player.addListener('ready', ({ device_id }) => {
-    console.log('Ready with Device ID', device_id);
-    window.quizDeviceId = device_id;
-    transferPlayback(device_id);
-  });
-
-  player.connect();
-
-  function transferPlayback(device_id) {
-    fetch("https://api.spotify.com/v1/me/player", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({
-        "device_ids": [device_id],
-        "play": false
-      })
-    })
-    .catch(err => console.error("Transfer playback error:", err));
-  }
-
-  window.playTrack = function(trackId) {
-    if (!window.quizDeviceId) {
-      console.error("Device ID not available yet.");
-      return;
-    }
-    const trackUri = "spotify:track:" + trackId;
-    fetch(`https://api.spotify.com/v1/me/player/play?device_id=${window.quizDeviceId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({ uris: [trackUri] })
-    })
-    .then(response => {
-      if (!response.ok) {
-        console.error("Error starting playback:", response);
-      } else {
-        console.log("Playback started:", trackUri);
-        // forcibly pause after snippet_secs:
-        const snippetSecs = {{ snippet_secs or 15 }};
-        setTimeout(() => {
-          player.pause().then(() => {
-            console.log("Snippet paused after", snippetSecs, "seconds");
-          });
-        }, snippetSecs * 1000);
-      }
-    })
-    .catch(err => console.error("Playback error:", err));
-  };
-
-  const btn = document.getElementById("playButton");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      const trackId = btn.getAttribute("data-track-id");
-      playTrack(trackId);
-    });
-  }
-};
-</script>
 {% endblock %}

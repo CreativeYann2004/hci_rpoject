@@ -26,8 +26,7 @@ class User(db.Model):
 
     def get_level(self):
         """
-        Compute the user's level on-the-fly, based on accuracy.
-        Or you could store it in the DB and update occasionally.
+        Dynamically determine user level based on accuracy.
         """
         acc = self.get_accuracy()
         if acc < 0.3:
