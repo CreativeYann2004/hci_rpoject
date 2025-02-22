@@ -1,9 +1,10 @@
+# routes/quiz_base.py
 import re
 import random
-import spotipy
-import spotipy.exceptions
-from flask import Blueprint, session, redirect, url_for, flash
+import time
 from functools import wraps
+
+from flask import Blueprint, session, redirect, url_for, flash
 from app import db
 from models import User
 
@@ -41,9 +42,6 @@ def require_login(f):
     return wrapper
 
 def parse_spotify_playlist_input(user_input):
-    """
-    Accepts a Spotify playlist ID, full link, or URI. Returns the extracted ID.
-    """
     if not user_input:
         return ""
     user_input = user_input.strip()
@@ -55,9 +53,6 @@ def parse_spotify_playlist_input(user_input):
     return user_input
 
 def get_buddy_personality_lines():
-    """
-    Returns lines based on buddy_personality in session, default='friendly'.
-    """
     personality = session.get('buddy_personality', 'friendly')
     lines = {
         'friendly': {
@@ -76,6 +71,11 @@ def get_buddy_personality_lines():
             'rank': [
                 "Ranking time! Let's see what you think!",
                 "Time to order some tracks—have fun!"
+            ],
+            'hint': [
+                "Psst—need a clue?",
+                "A little hint won't hurt, right?",
+                "Okay, here's a nudge in the right direction…"
             ]
         },
         'strict': {
@@ -93,19 +93,20 @@ def get_buddy_personality_lines():
             'rank': [
                 "Ranking again? Don’t mess it up.",
                 "Focus and get it right this time."
+            ],
+            'hint': [
+                "Try harder. Here's a tiny clue.",
+                "I'm only giving this hint once.",
+                "You shouldn't need a hint, but here you go..."
             ]
         }
     }
     return lines.get(personality, lines['friendly'])
 
 ########################################
-# FETCH PLAYLIST TRACKS (Popularity + Year)
+# HELPER: fetch playlist tracks
 ########################################
 def _fetch_playlist_tracks(sp, playlist_id, limit=300):
-    """
-    Retrieve tracks from a Spotify playlist. 
-    We store year & popularity for ranking logic, plus preview_url if available.
-    """
     offset = 0
     total = 0
     added = 0
@@ -163,3 +164,54 @@ def _fetch_playlist_tracks(sp, playlist_id, limit=300):
             break
 
     return (total, added)
+
+########################################
+# HINT GENERATION
+########################################
+def generate_hints(track, question_type, user, is_personalized=False):
+    """
+    Return a list of hint strings to display. 
+    The buddy will re-say them until the user guesses.
+    """
+    hints = []
+
+    # Possibly adapt how many hints we show if the user is advanced vs struggling
+    user_elo = user.personalized_guess_elo if is_personalized else user.random_guess_elo
+
+    # Example logic: advanced => fewer hints
+    max_hints = 3
+    if user_elo > 1400:
+        max_hints = 1
+    elif user_elo < 1100:
+        max_hints = 3  # allow full hints
+
+    if question_type == 'artist':
+        # first letter
+        first_letter = track['artist'][0]
+        hints.append(f"The artist starts with '{first_letter}'.")
+        if is_personalized and max_hints > 1:
+            name_len = len(track['artist'])
+            hints.append(f"The artist's name has {name_len} letters.")
+
+    elif question_type == 'title':
+        first_letter = track['title'][0]
+        hints.append(f"The title starts with '{first_letter}'.")
+        if is_personalized and max_hints > 1:
+            hints.append(f"The title has {len(track['title'])} characters.")
+
+    elif question_type == 'year':
+        decade = (track['year'] // 10) * 10
+        hints.append(f"The release year is in the {decade}s.")
+        if is_personalized and max_hints > 1:
+            if track['year'] >= 2000:
+                hints.append("It's in the 21st century.")
+            else:
+                hints.append("It's in the 20th century or earlier.")
+
+    # If the user missed it multiple times, we can add an extra nudge
+    times_missed = user.get_missed_songs().count(track["id"])
+    if times_missed >= 2 and is_personalized and max_hints > 1:
+        hints.append("Remember, we've seen this track a few times already. Focus!")
+
+    # Limit number of hints to max_hints
+    return hints[:max_hints]

@@ -7,53 +7,39 @@
   <a class="btn btn-primary" href="{{ url_for('quiz_bp.random_version') }}">Try Another Snippet</a>
 {% else %}
   {% if song %}
-    <!--
-      Hardcoded crop container
-      width=50, height=50, position relative, overflow hidden
-    -->
-    <div style="
-      width:50px;
-      height:50px;
-      position:relative;
-      overflow:hidden;
-      border:1px solid #ccc;
-      margin-bottom:1rem;
-    ">
-
-      <!--
-        Big iframe: 600x600
-        Hardcoded offsets & scale
-      -->
+    <div style="width:50px; height:50px; position:relative; overflow:hidden; border:1px solid #ccc; margin-bottom:1rem;">
       <iframe
         src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
         width="600"
         height="600"
         frameborder="0"
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        style="
-          position:absolute;
-          top:-265px;
-          left:-511px;
-          transform: scale(1);
-          transform-origin: top left;
-        "
+        style="position:absolute; top:-265px; left:-511px;"
       ></iframe>
     </div>
 
-    <!-- Single-field guess form -->
+    <!-- We do NOT display hints as text since the buddy repeats them.
+         If you want them also displayed, you can do so: -->
+    {# 
+    {% if buddy_hint %}
+    <div class="alert alert-warning">
+      <strong>Hint:</strong> {{ buddy_hint }}
+    </div>
+    {% endif %}
+    #}
+
     {% set ctype = session.challenge_type %}
     <form method="POST" action="{{ url_for('quiz_bp.submit_guess') }}">
       {% if ctype == 'title' %}
         <p>Guess the <strong>Song Title</strong>:</p>
-        <input type="text" name="guess" id="guess" class="form-control" placeholder="Song Title..." required>
+        <input type="text" name="guess" class="form-control" placeholder="Song Title..." required>
       {% elif ctype == 'year' %}
         <p>Guess the <strong>Release Year</strong>:</p>
-        <input type="text" name="guess" class="form-control" placeholder="Year (e.g. 1999)" required>
+        <input type="text" name="guess" class="form-control" placeholder="e.g. 1999" required>
       {% else %}
         <p>Guess the <strong>Artist</strong>:</p>
-        <input type="text" name="guess" id="guess" class="form-control" placeholder="Artist name..." required>
+        <input type="text" name="guess" class="form-control" placeholder="Artist name..." required>
       {% endif %}
-      <input type="hidden" name="source_page" value="random">
       <button class="btn btn-success mt-2">Submit Guess</button>
     </form>
   {% else %}

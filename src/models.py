@@ -1,5 +1,7 @@
+# models.py
 from app import db
 import json
+from datetime import datetime
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -72,3 +74,18 @@ class User(db.Model):
             old_elo = self.personalized_rank_elo
             new_elo = old_elo + K * (outcome - 0.5)
             self.personalized_rank_elo = round(new_elo)
+
+
+# NEW: Store each guess attempt (for your user study data)
+class GuessLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    track_id = db.Column(db.String(80), nullable=False)
+    question_type = db.Column(db.String(10))  # "artist", "title", "year"
+    is_correct = db.Column(db.Boolean, default=False)
+    time_taken = db.Column(db.Float, default=0.0)
+    approach = db.Column(db.String(15))  # "random" or "personalized"
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship back to the user if you want:
+    user = db.relationship("User", backref="guess_logs")

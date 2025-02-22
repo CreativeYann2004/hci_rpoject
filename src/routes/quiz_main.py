@@ -1,19 +1,33 @@
+# routes/quiz_main.py
 import random
+import spotipy
 import spotipy.exceptions
-from flask import (
-    render_template, request, redirect, url_for,
-    session, flash
-)
+from flask import Blueprint, session, redirect, url_for, flash, render_template, request
+from functools import wraps
 from app import db
-from models import User
+from models import User, GuessLog
 from routes.auth import get_spotify_client
-from routes.quiz_base import quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS
-from routes.quiz_base import current_user, require_login
-from routes.quiz_base import parse_spotify_playlist_input, get_buddy_personality_lines, _fetch_playlist_tracks
+from routes.quiz_base import (
+    quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS, get_buddy_personality_lines,
+    generate_hints, _fetch_playlist_tracks
+)
+from routes.quiz_base import parse_spotify_playlist_input
 
-########################################
-# DASHBOARD
-########################################
+def current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    return User.query.get(uid)
+
+def require_login(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not current_user():
+            flash("Please log in first!", "warning")
+            return redirect(url_for('auth_bp.login'))
+        return f(*args, **kwargs)
+    return wrapper
+
 @quiz_bp.route('/dashboard')
 @require_login
 def dashboard():
@@ -33,11 +47,8 @@ def dashboard():
             except spotipy.exceptions.SpotifyException as e:
                 flash(f"Error auto-fetching playlist: {str(e)}", "danger")
 
-    # Buddy greeting
     if not session.get("spotify_token"):
-        session["buddy_message"] = (
-            f"Hello, {user.username}! Connect your Spotify account above!"
-        )
+        session["buddy_message"] = f"Hello, {user.username}! Connect your Spotify account above!"
     else:
         lines = get_buddy_personality_lines()
         session["buddy_message"] = lines['start'][0]
@@ -47,9 +58,6 @@ def dashboard():
                            missed_count=missed_count,
                            all_songs=ALL_TRACKS)
 
-########################################
-# SETTINGS
-########################################
 @quiz_bp.route('/settings', methods=['GET', 'POST'])
 @require_login
 def settings():
@@ -57,22 +65,17 @@ def settings():
     if request.method == 'POST':
         session['color_theme'] = request.form.get('color_theme', 'navy')
         session['difficulty'] = request.form.get('difficulty', 'normal')
-
-        # Playlist
         custom_pl = request.form.get('playlist_id', '').strip()
         if custom_pl:
             parsed_pl = parse_spotify_playlist_input(custom_pl)
             session['playlist_id'] = parsed_pl
-            ALL_TRACKS.clear()  # clear so we reload next time
-
-        # Buddy personality
+            ALL_TRACKS.clear()
         chosen_personality = request.form.get('buddy_personality', 'friendly')
         session['buddy_personality'] = chosen_personality
 
         flash("Settings updated!", "success")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # GET => existing settings
     color = session.get('color_theme', 'navy')
     diff = session.get('difficulty', 'normal')
     curr_pl = session.get('playlist_id', '')
@@ -86,26 +89,17 @@ def settings():
         buddy_personality=curr_buddy
     )
 
-########################################
-# SCOREBOARD
-########################################
 @quiz_bp.route('/scoreboard')
 @require_login
 def scoreboard():
-    """List user performance (accuracy, attempts) but hide ELO."""
     users = User.query.all()
-
     def accuracy(u):
         if u.total_attempts == 0:
             return 0
         return u.total_correct / u.total_attempts
-
     sorted_users = sorted(users, key=lambda x: (accuracy(x), x.total_correct), reverse=True)
     return render_template('scoreboard.html', all_users=sorted_users)
 
-########################################
-# SELECT / IMPORT PLAYLIST
-########################################
 @quiz_bp.route('/select_playlist', methods=['GET','POST'])
 @require_login
 def select_playlist():
@@ -136,11 +130,12 @@ def select_playlist():
             flash(f"Error fetching your playlists: {e}", "danger")
             return redirect(url_for('quiz_bp.dashboard'))
 
-        return render_template("select_playlist.html",
-                               official_playlists=official_playlists,
-                               user_playlists=user_playlists)
+        return render_template(
+            "select_playlist.html",
+            official_playlists=official_playlists,
+            user_playlists=user_playlists
+        )
 
-    # POST => user chose official or custom
     chosen_pl = request.form.get('chosen_playlist')
     custom_pl = request.form.get('custom_playlist_id','').strip()
     if chosen_pl:
@@ -156,9 +151,6 @@ def select_playlist():
     flash("Playlist selected! Tracks will load once you start playing or return to the dashboard.", "success")
     return redirect(url_for('quiz_bp.dashboard'))
 
-########################################
-# RECENT
-########################################
 @quiz_bp.route('/recent')
 @require_login
 def recent_played():
@@ -167,7 +159,6 @@ def recent_played():
         flash("Connect your Spotify account first!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    import spotipy
     try:
         results = sp.current_user_recently_played(limit=20)
     except spotipy.exceptions.SpotifyException as e:
@@ -190,7 +181,7 @@ def recent_played():
     return render_template("recent.html", tracks=tracks)
 
 ########################################
-# RANDOM GUESS
+# RANDOM VERSION (Guess)
 ########################################
 @quiz_bp.route('/random_version')
 @require_login
@@ -200,7 +191,6 @@ def random_version():
         flash("Spotify not connected. Please connect first!", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # If no tracks loaded, attempt to fetch
     if not ALL_TRACKS:
         if not session.get('playlist_id'):
             flash("No playlist selected. Please import a playlist first.", "warning")
@@ -223,10 +213,27 @@ def random_version():
     session["challenge_type"] = ctype
 
     lines = get_buddy_personality_lines()
-    start_line = random.choice(lines['start'])
-    session["buddy_message"] = f"Random mode: {start_line}"
 
-    return render_template('random_version.html', song=chosen, feedback=None)
+    # Decide whether to give a hint, e.g. 40% chance
+    show_hint = (random.random() < 0.4)
+    if show_hint:
+        generated = generate_hints(chosen, ctype, current_user(), is_personalized=False)
+        # We store them in session['buddy_hint'] so the buddy repeats the same text
+        if generated:
+            # We combine them into one big string or keep them separate
+            final_hint_text = " | ".join(generated)
+            session['buddy_hint'] = final_hint_text
+            session["buddy_message"] = random.choice(lines['hint'])
+        else:
+            session.pop('buddy_hint', None)
+            session["buddy_message"] = random.choice(lines['start'])
+    else:
+        # No hints => clear buddy_hint
+        session.pop('buddy_hint', None)
+        session["buddy_message"] = random.choice(lines['start'])
+
+    return render_template('random_version.html', song=chosen, feedback=None, hints=[])
+
 
 @quiz_bp.route('/submit_guess', methods=['POST'])
 @require_login
@@ -239,7 +246,7 @@ def submit_guess():
 
     chosen = next((t for t in ALL_TRACKS if t["id"] == track_id), None)
     if not chosen:
-        flash("Track not found in memory. Returning to dashboard.", "warning")
+        flash("Track not found. Returning to dashboard.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
     challenge = session.get("challenge_type", "artist")
@@ -271,9 +278,20 @@ def submit_guess():
     missed_list = user.get_missed_songs()
     lines = get_buddy_personality_lines()
 
-    # ELO update
     outcome = 1.0 if guess_correct else 0.0
     user.update_elo('random', 'guess', outcome)
+
+    # NEW: Log attempt
+    from models import GuessLog
+    guess_log = GuessLog(
+        user_id=user.id,
+        track_id=track_id,
+        question_type=challenge,
+        is_correct=guess_correct,
+        time_taken=0.0,  # we aren't measuring time here, but you could
+        approach='random'
+    )
+    db.session.add(guess_log)
 
     if guess_correct:
         user.total_correct += 1
@@ -282,11 +300,15 @@ def submit_guess():
             missed_list.remove(chosen["id"])
         fact = random.choice(RANDOM_MUSIC_FACTS)
         session["buddy_message"] = fact
+        # Clear the buddy_hint now that we've guessed
+        session.pop('buddy_hint', None)
     else:
         feedback = f"Wrong! Correct: {chosen['artist']} - {chosen['title']} ({chosen['year']})"
         if chosen["id"] not in missed_list:
             missed_list.append(chosen["id"])
         session["buddy_message"] = random.choice(lines['wrong'])
+        # Keep the buddy_hint if we want them to guess again
+        # But if you want them to keep guessing the same track, you'd not set a new track_id
 
     user.set_missed_songs(missed_list)
     db.session.commit()
@@ -294,8 +316,63 @@ def submit_guess():
     session["feedback"] = feedback
     return redirect(url_for('quiz_bp.random_feedback'))
 
+
 @quiz_bp.route('/random_feedback')
 @require_login
 def random_feedback():
     fb = session.get("feedback")
-    return render_template('random_version.html', song=None, feedback=fb)
+    return render_template('random_version.html', song=None, feedback=fb, hints=[])
+
+@quiz_bp.route('/choose_playlist', methods=['GET', 'POST'])
+@require_login
+def choose_playlist():
+    """
+    Minimal route: shows the user's own playlists, plus a form for a custom link.
+    No official/hardcoded playlists. No track counts or ID displayed.
+    """
+    sp = get_spotify_client()
+    if not sp:
+        flash("Please connect your Spotify account first!", "warning")
+        return redirect(url_for('quiz_bp.dashboard'))
+
+    if request.method == 'POST':
+        choice_source = request.form.get('choice_source')
+
+        if choice_source == 'user':
+            selected_id = request.form.get('playlist_id')
+            if selected_id:
+                session['playlist_id'] = selected_id
+                ALL_TRACKS.clear()
+                flash("Selected your playlist!", "success")
+            else:
+                flash("No playlist chosen.", "warning")
+
+        elif choice_source == 'custom':
+            custom_val = request.form.get('custom_playlist_link', '').strip()
+            if custom_val:
+                from routes.quiz_base import parse_spotify_playlist_input
+                parsed_id = parse_spotify_playlist_input(custom_val)
+                if parsed_id:
+                    session['playlist_id'] = parsed_id
+                    ALL_TRACKS.clear()
+                    flash("Custom playlist set!", "success")
+                else:
+                    flash("Unable to parse that link or ID!", "danger")
+            else:
+                flash("No custom link provided.", "warning")
+
+        return redirect(url_for('quiz_bp.dashboard'))
+
+    # GET => fetch up to 50 user playlists (one page)
+    user_playlists = []
+    try:
+        result = sp.current_user_playlists(limit=50, offset=0)
+        user_playlists = result.get('items', [])
+    except Exception as e:
+        flash(f"Error fetching your playlists: {str(e)}", "danger")
+        return redirect(url_for('quiz_bp.dashboard'))
+
+    return render_template(
+        "choose_playlist.html",
+        user_playlists=user_playlists
+    )

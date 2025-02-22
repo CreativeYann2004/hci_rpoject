@@ -1,24 +1,32 @@
+# routes/quiz_ranking.py
 import random
 from flask import (
     render_template, request, redirect, url_for,
-    flash, session
+    session, flash
 )
-from routes.quiz_base import quiz_bp, ALL_TRACKS
-from routes.quiz_base import current_user, require_login, get_buddy_personality_lines
 from app import db
 from models import User
+from routes.quiz_base import quiz_bp, ALL_TRACKS, get_buddy_personality_lines
 
-########################################
-# RANDOM RANK
-########################################
+def current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    return User.query.get(uid)
+
+def require_login(f):
+    from functools import wraps
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not current_user():
+            flash("Please log in first!", "warning")
+            return redirect(url_for('auth_bp.login'))
+        return f(*args, **kwargs)
+    return wrapper
+
 @quiz_bp.route('/random_rank', methods=['GET'])
 @require_login
 def random_rank():
-    """
-    Show random tracks for the user to rank horizontally.
-    The sorting criterion is determined by session['ranking_mode'],
-    which can be 'timeline' or 'popularity'.
-    """
     if not ALL_TRACKS:
         flash("No tracks found. Please select/import a playlist first.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
@@ -26,7 +34,6 @@ def random_rank():
     lines = get_buddy_personality_lines()
     session["buddy_message"] = random.choice(lines['rank'])
 
-    # Choose how many songs to rank (3–5) but cannot exceed total
     max_n = min(len(ALL_TRACKS), 5)
     if max_n < 2:
         flash("Not enough tracks to rank!", "warning")
@@ -34,11 +41,8 @@ def random_rank():
 
     n = random.choice([3,4,5][:max_n])
     sample_tracks = random.sample(ALL_TRACKS, n)
-
-    # Store them in session so we know which ones to evaluate
     session['ranking_tracks'] = [t['id'] for t in sample_tracks]
 
-    # Render the horizontal drag UI
     return render_template("random_rank_drag.html", tracks=sample_tracks)
 
 
@@ -52,13 +56,11 @@ def submit_random_rank():
         flash("No tracks to rank! Please start again.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # The user’s final drag order
     drag_order = request.form.get("drag_order", "").strip()
     final_ids = []
     if drag_order:
         final_ids = [x for x in drag_order.split(",") if x]
     else:
-        # fallback if no drag_order => user might have used numeric inputs, etc.
         submitted_order = []
         for tid in track_ids:
             rank_str = request.form.get(f"rank_{tid}")
@@ -76,16 +78,13 @@ def submit_random_rank():
 
     valid_tracks = [get_track(tid) for tid in track_ids if get_track(tid)]
 
-    # Decide correct order
     if ranking_mode == 'timeline':
         correct_ordered = sorted(valid_tracks, key=lambda t: t['year'])
     else:
-        # popularity
         correct_ordered = sorted(valid_tracks, key=lambda t: t['popularity'])
 
     correct_ids_in_order = [t['id'] for t in correct_ordered]
 
-    # count pairwise correctness
     def count_correct_pairs(order_list):
         correct_count = 0
         total_pairs = 0
@@ -96,7 +95,6 @@ def submit_random_rank():
                 tid_j = order_list[j]
                 idx_i = correct_ids_in_order.index(tid_i)
                 idx_j = correct_ids_in_order.index(tid_j)
-                # correct if tid_i < tid_j in the correct ordering
                 if idx_i < idx_j:
                     correct_count += 1
         if total_pairs == 0:
@@ -104,15 +102,12 @@ def submit_random_rank():
         return correct_count / total_pairs
 
     correctness_fraction = count_correct_pairs(final_ids)
-
-    # Difficulty rating from user
     difficulty_str = request.form.get("difficulty", "3")
     try:
         difficulty_rating = int(difficulty_str)
     except:
         difficulty_rating = 3
     difficulty_rating = max(1, min(difficulty_rating, 5))
-
     rating_fraction = (difficulty_rating - 1) / 4
     outcome = 0.7 * correctness_fraction + 0.3 * rating_fraction
 
@@ -130,23 +125,14 @@ def submit_random_rank():
 
     return redirect(url_for('quiz_bp.dashboard'))
 
-
-########################################
-# PERSONALIZED RANK
-########################################
 @quiz_bp.route('/personalized_rank', methods=['GET'])
 @require_login
 def personalized_rank():
-    """
-    Similar approach, but #tracks depends on user’s personalized_rank_elo.
-    Also tries to prefer missed songs for half.
-    Also uses session['ranking_mode'] to decide timeline vs popularity.
-    """
+    user = current_user()
     if not ALL_TRACKS:
         flash("No tracks found. Please select/import a playlist first.", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    user = current_user()
     lines = get_buddy_personality_lines()
     session["buddy_message"] = random.choice(lines['rank'])
 
@@ -166,7 +152,6 @@ def personalized_rank():
     random.shuffle(missed_candidates)
 
     chosen = []
-    # prefer missed first
     while len(chosen) < n and missed_candidates:
         chosen.append(missed_candidates.pop())
 
@@ -177,10 +162,7 @@ def personalized_rank():
         chosen.extend(random.sample(available, remaining_needed))
 
     session['personalized_ranking_tracks'] = [t['id'] for t in chosen]
-
-    # Render the horizontal drag UI
     return render_template("personalized_rank_drag.html", tracks=chosen)
-
 
 @quiz_bp.route('/submit_personalized_rank', methods=['POST'])
 @require_login
@@ -192,13 +174,11 @@ def submit_personalized_rank():
         flash("No tracks to rank! Please start again.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # final drag order
     drag_order = request.form.get("drag_order", "").strip()
     final_ids = []
     if drag_order:
         final_ids = [x for x in drag_order.split(",") if x]
     else:
-        # fallback if no drag_order => user used numeric form
         submitted_order = []
         for tid in track_ids:
             rank_str = request.form.get(f"rank_{tid}")
@@ -216,7 +196,6 @@ def submit_personalized_rank():
 
     valid_tracks = [get_track(tid) for tid in track_ids if get_track(tid)]
 
-    # correct order
     if ranking_mode == 'timeline':
         correct_ordered = sorted(valid_tracks, key=lambda t: t['year'])
     else:
@@ -224,7 +203,6 @@ def submit_personalized_rank():
 
     correct_ids_in_order = [t['id'] for t in correct_ordered]
 
-    # pairwise correctness
     def count_correct_pairs(order_list):
         correct_count = 0
         total_pairs = 0
@@ -242,7 +220,6 @@ def submit_personalized_rank():
         return correct_count / total_pairs
 
     correctness_fraction = count_correct_pairs(final_ids)
-
     difficulty_str = request.form.get("difficulty", "3")
     try:
         difficulty_rating = int(difficulty_str)

@@ -1,3 +1,4 @@
+# routes/auth.py
 import requests
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -46,7 +47,6 @@ def require_login(f):
 
 @auth_bp.route('/')
 def home():
-    # If user is logged in, go to dashboard
     if current_user():
         return redirect(url_for('quiz_bp.dashboard'))
     else:
@@ -90,6 +90,7 @@ def login():
 def logout():
     session.pop('user_id', None)
     session.pop('spotify_token', None)
+    session.pop('buddy_hint', None)  # Clear buddy hint too
     flash("Logged out!", "info")
     return redirect(url_for('auth_bp.login'))
 
@@ -97,19 +98,14 @@ def get_spotify_token():
     return session.get("spotify_token")
 
 def get_spotify_client():
-    """Returns a Spotipy client if the user has a token; else None."""
     token = get_spotify_token()
     if not token:
         return None
     return spotipy.Spotify(auth=token)
 
-########################
-# SPOTIFY LOGIN
-########################
 @auth_bp.route('/spotify/login')
 @require_login
 def spotify_login():
-    """Step 1: Redirect user to Spotify authorization."""
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         flash("Spotify credentials not set!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
@@ -122,12 +118,8 @@ def spotify_login():
     url = "https://accounts.spotify.com/authorize?" + urlencode(params)
     return redirect(url)
 
-########################
-# SPOTIFY CALLBACK
-########################
 @auth_bp.route('/spotify/callback')
 def spotify_callback():
-    """Spotify redirects here with 'code'. Exchange for access token."""
     code = request.args.get("code")
     error = request.args.get("error")
     if error or not code:

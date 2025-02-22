@@ -1,3 +1,4 @@
+# app.py
 from flask import Flask, session
 from flask_sqlalchemy import SQLAlchemy
 import datetime
@@ -9,7 +10,7 @@ db = SQLAlchemy()
 def create_app():
     load_dotenv()
     app = Flask(__name__)
-    # For demo purposes only; use a secure random key in production:
+    # For demo purposes only; use a secure random key in production
     app.secret_key = "ANY_RANDOM_SECRET_FOR_DEVELOPMENT"
 
     # Database config
@@ -17,23 +18,25 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
 
-    # Provide "now" and "buddy_message" to all templates
     @app.context_processor
     def inject_now():
         return {"now": datetime.datetime.now()}
 
     @app.context_processor
     def inject_buddy_message():
-        return {"buddy_message": session.get("buddy_message", "")}
+        # We'll also pass session.buddy_hint if we want the buddy to repeat the hint
+        return {
+            "buddy_message": session.get("buddy_message", ""),
+            "buddy_hint": session.get("buddy_hint", "")
+        }
 
     # Register Blueprints
     from routes.auth import auth_bp
     from routes.quiz_base import quiz_bp
 
-    # Import the other route files so that they attach to quiz_bp
     import routes.quiz_main
     import routes.quiz_personalized
-    import routes.quiz_ranking  # new ranking logic
+    import routes.quiz_ranking
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(quiz_bp)
@@ -42,3 +45,7 @@ def create_app():
         db.create_all()
 
     return app
+
+if __name__ == '__main__':
+    app = create_app()
+    app.run(debug=True)

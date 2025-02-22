@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div style="max-width:600px; margin:0 auto;">
+  <h2>Select a Playlist</h2>
+
+  {% if user_playlists and user_playlists|length > 0 %}
+    <ul style="list-style-type:none; padding:0;">
+      {% for pl in user_playlists %}
+        <li style="margin-bottom:1rem; border:1px solid #ccc; padding:0.5rem; display:flex; align-items:center;">
+          <!-- Cover or fallback -->
+          {% if pl.images and pl.images|length > 0 %}
+            <img src="{{ pl.images[0].url }}"
+                 alt="Cover"
+                 style="width:70px; height:70px; object-fit:cover; margin-right:1rem;">
+          {% else %}
+            <img src="https://via.placeholder.com/70?text=No+Cover"
+                 alt="No cover"
+                 style="width:70px; height:70px; object-fit:cover; margin-right:1rem;">
+          {% endif %}
+
+          <!-- Playlist name and button -->
+          <div style="flex:1;">
+            <div style="font-size:1.1rem; margin-bottom:0.5rem;">
+              {{ pl.name }}
+            </div>
+            <form method="POST" style="margin:0;">
+              <input type="hidden" name="choice_source" value="user">
+              <input type="hidden" name="playlist_id" value="{{ pl.id }}">
+              <button style="padding:0.3rem 0.8rem;">Select</button>
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p style="color:#555;">No playlists found or none exist yet.</p>
+  {% endif %}
+
+  <hr style="margin:2rem 0;" />
+
+  <!-- Custom link form -->
+  <h4>Or Use a Custom Link</h4>
+  <form method="POST" style="display:flex; flex-direction:column; gap:0.5rem;">
+    <input type="hidden" name="choice_source" value="custom">
+    <label for="custom_playlist_link" style="font-weight:bold;">Playlist URL or ID</label>
+    <input
+      type="text"
+      name="custom_playlist_link"
+      id="custom_playlist_link"
+      style="padding:0.4rem;"
+      placeholder="e.g. https://open.spotify.com/playlist/..."
+    />
+    <button style="padding:0.3rem 0.8rem; margin-top:0.5rem;">Use This Playlist</button>
+  </form>
+</div>
+
+{% endblock %}
