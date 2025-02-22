@@ -1,40 +1,43 @@
 {% extends "layout.html" %}
 {% block content %}
-<h2>Dashboard (Project Manual / HCI)</h2>
-<p class="text-muted">Welcome to our two-interface prototype: Random UI vs Personalized UI.</p>
+<h2>Dashboard</h2>
+<p class="text-muted">Welcome, {{ user.username }}! Below are your stats.</p>
 
 <div class="card mt-3">
   <div class="card-body">
-    <h5 class="card-title">Hello, {{ user.username }}!</h5>
+    <h5 class="card-title">Your Stats</h5>
     <p class="card-text">
       Attempts: {{ user.total_attempts }}<br/>
       Correct: {{ user.total_correct }}<br/>
+      Accuracy: {{ (user.get_accuracy()*100)|round(1) }}%<br/>
       Missed Songs: {{ missed_count }}
     </p>
 
-    <button 
-    class="btn quiz-btn me-2"
-    onclick="window.location='{{ url_for('quiz_bp.choose_quiz') }}'">
-    Play Guessing Game
+    <hr/>
+    <button class="btn quiz-btn me-2"
+            onclick="window.location='{{ url_for('quiz_bp.random_version') }}'">
+      Play <strong>Random Guess</strong>
     </button>
-
-    
-    <button 
-    class="btn quiz-btn mt-2"
-    onclick="window.location='{{ url_for('quiz_bp.buddy_generator') }}'">
-    Buddy's Random Playlist Generator
+    <button class="btn quiz-btn me-2"
+            onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
+      Play <strong>Personalized Guess</strong>
     </button>
+    <button class="btn quiz-btn me-2"
+            onclick="window.location='{{ url_for('quiz_bp.random_rank') }}'">
+      Play <strong>Random Rank</strong>
+    </button>
+    <button class="btn quiz-btn"
+            onclick="window.location='{{ url_for('quiz_bp.personalized_rank') }}'">
+      Play <strong>Personalized Rank</strong>
+    </button>
+    <br/><br/>
 
-    <button 
-      class="btn quiz-btn me-2"
-      onclick="window.location='{{ url_for('quiz_bp.scoreboard') }}'">
+    <button class="btn quiz-btn me-2"
+            onclick="window.location='{{ url_for('quiz_bp.scoreboard') }}'">
       View Scoreboard
     </button>
-
-    <!-- Button for selecting/importing a playlist -->
-    <button 
-      class="btn quiz-btn"
-      onclick="window.location='{{ url_for('quiz_bp.select_playlist') }}'">
+    <button class="btn quiz-btn"
+            onclick="window.location='{{ url_for('quiz_bp.select_playlist') }}'">
       Select/Import Playlist
     </button>
   </div>

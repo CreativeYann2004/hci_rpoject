@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Random Ranking</h2>
+{% if tracks and tracks|length > 0 %}
+  <p>
+    Rank these {{ tracks|length }} song(s) in
+    <strong>
+      {% if session.ranking_mode == 'timeline' %}ascending year order
+      {% else %}ascending popularity
+      {% endif %}
+    </strong>.
+  </p>
+
+  <form method="POST" action="{{ url_for('quiz_bp.submit_random_rank') }}">
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th>Song & Snippet</th>
+          <th>Your Rank (1 = top)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tracks %}
+        <tr>
+          <td>
+            <strong>{{ t.artist }} - {{ t.title }}</strong><br/>
+            <div style="margin-top:8px;">
+              <!-- Spotify embedded snippet with coverart (like the guess approach) -->
+              <iframe
+                src="https://open.spotify.com/embed/track/{{ t.id }}?theme=0&view=coverart"
+                width="80" height="80" frameborder="0"
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                style="border-radius:8px;">
+              </iframe>
+            </div>
+          </td>
+          <td style="vertical-align: middle;">
+            <input type="number"
+                   min="1"
+                   max="{{ tracks|length }}"
+                   class="form-control"
+                   name="rank_{{ t.id }}"
+                   required />
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="mb-3">
+      <label for="difficulty" class="form-label">How difficult was this? (1–5)</label>
+      <select name="difficulty" id="difficulty" class="form-select">
+        {% for i in range(1,6) %}
+          <option value="{{ i }}">{{ i }} Star{% if i>1 %}s{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Submit Ranking</button>
+  </form>
+{% else %}
+  <p>No tracks to rank!</p>
+{% endif %}
+{% endblock %}

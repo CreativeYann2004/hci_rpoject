@@ -46,6 +46,7 @@ def require_login(f):
 
 @auth_bp.route('/')
 def home():
+    # If user is logged in, go to dashboard
     if current_user():
         return redirect(url_for('quiz_bp.dashboard'))
     else:
@@ -126,7 +127,7 @@ def spotify_login():
 ########################
 @auth_bp.route('/spotify/callback')
 def spotify_callback():
-    """Step 2: Spotify redirects here with 'code'. Exchange for access token."""
+    """Spotify redirects here with 'code'. Exchange for access token."""
     code = request.args.get("code")
     error = request.args.get("error")
     if error or not code:
@@ -151,7 +152,6 @@ def spotify_callback():
         flash("No access token from Spotify!", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # For production, store/refresh tokens properly. This is simplified.
     session["spotify_token"] = access_token
     flash("Spotify connected! You can now import your playlists or view recent tracks.", "success")
     return redirect(url_for('quiz_bp.dashboard'))

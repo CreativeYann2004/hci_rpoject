@@ -9,8 +9,10 @@ db = SQLAlchemy()
 def create_app():
     load_dotenv()
     app = Flask(__name__)
+    # For demo purposes only; use a secure random key in production:
     app.secret_key = "ANY_RANDOM_SECRET_FOR_DEVELOPMENT"
 
+    # Database config
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///guessing_game.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
@@ -27,8 +29,11 @@ def create_app():
     # Register Blueprints
     from routes.auth import auth_bp
     from routes.quiz_base import quiz_bp
-    import routes.quiz_main       # attaches main quiz routes to quiz_bp
-    import routes.quiz_personalized  # attaches personalized routes to quiz_bp
+
+    # Import the other route files so that they attach to quiz_bp
+    import routes.quiz_main
+    import routes.quiz_personalized
+    import routes.quiz_ranking  # new ranking logic
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(quiz_bp)

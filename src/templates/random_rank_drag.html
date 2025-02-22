@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+
+  <h2 class="mb-3">Rank Your Songs (Drag & Drop)</h2>
+  <p>
+    Drag each song from the bottom row (scrollable) into one of the four top boxes.
+    The box labeled <strong>Rank 1</strong> might be your “lowest” or “oldest” item,
+    and <strong>Rank 4</strong> might be your “highest” or “newest” — adapt as needed.
+  </p>
+
+  <!-- FORM: We'll store the final order in a hidden input -->
+  <form method="POST" action="{{ url_for('quiz_bp.submit_random_rank') }}">
+    <input type="hidden" id="final_order" name="final_order" />
+
+    <!-- TOP ROW: 4 rank boxes -->
+    <div class="row text-center mb-4">
+      {% for i in range(1,5) %}
+        <div class="col">
+          <div class="dropzone card shadow-sm p-3 mb-2"
+               style="min-height: 220px; border:3px dashed #999; cursor:default;"
+               data-rank="{{ i }}">
+            <h5 class="text-muted">Rank {{ i }}</h5>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- BOTTOM: horizontally scrollable row of songs -->
+    <div class="border p-3 mb-3" style="white-space: nowrap; overflow-x: auto;">
+      {% for t in tracks %}
+      <div class="song-card card d-inline-block m-2 shadow-sm"
+           style="width: 250px; cursor:grab; vertical-align: top;"
+           draggable="true"
+           data-trackid="{{ t.id }}">
+
+        <!-- Song info / text -->
+        <div class="card-body text-center">
+          <h6 class="card-title mb-1">{{ t.title }}</h6>
+          <p class="card-subtitle text-muted">{{ t.artist }}</p>
+        </div>
+
+        <!-- Spotify embed - large enough to show controls fully -->
+        <iframe
+          src="https://open.spotify.com/embed/track/{{ t.id }}"
+          width="100%"
+          height="152"
+          frameborder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
+        </iframe>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- SUBMIT BUTTON -->
+    <button type="submit" class="btn btn-primary" onclick="gatherOrder()">
+      Submit Ranking
+    </button>
+  </form>
+
+</div>
+
+<script>
+  // DRAG & DROP
+  let draggedItem = null;
+
+  // DRAGSTART => store the card being dragged
+  document.addEventListener('dragstart', (evt) => {
+    if (evt.target.classList.contains('song-card')) {
+      draggedItem = evt.target;
+      evt.dataTransfer.effectAllowed = 'move';
+    }
+  });
+
+  // ALLOW DROP on each .dropzone
+  document.querySelectorAll('.dropzone').forEach(zone => {
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (draggedItem) {
+        // If this zone already has a card, remove it first (only one card per zone)
+        let existingCard = zone.querySelector('.song-card');
+        if (existingCard) {
+          zone.removeChild(existingCard);
+        }
+        // Now drop in the new one
+        zone.appendChild(draggedItem);
+        draggedItem = null;
+      }
+    });
+  });
+
+  // Before form submit, gather the final order (left to right)
+  function gatherOrder() {
+    let orderArr = [];
+    // The dropzones are in DOM order: rank1, rank2, rank3, rank4
+    document.querySelectorAll('.dropzone').forEach(zone => {
+      let card = zone.querySelector('.song-card');
+      if (card) {
+        orderArr.push(card.dataset.trackid);
+      } else {
+        // no card => store empty or handle as you like
+        orderArr.push("");
+      }
+    });
+    document.getElementById('final_order').value = orderArr.join(',');
+  }
+</script>
+{% endblock %}

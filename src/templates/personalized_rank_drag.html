@@ -1,0 +1,122 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Personalized Ranking (Horizontal Drag & Drop)</h2>
+<p>
+  The criterion (year or popularity) is hidden. We'll adapt how many songs you get
+  based on your ELO and missed songs.
+</p>
+
+<form id="pRankForm" method="POST" action="{{ url_for('quiz_bp.submit_personalized_rank') }}">
+  <input type="hidden" name="drag_order" id="drag_order" />
+
+  <!-- Source row -->
+  <div class="mb-4">
+    <h5 class="text-center">Source (Drag from here)</h5>
+    <div class="d-flex flex-row flex-nowrap p-2 gap-3 border"
+         style="overflow-x:auto; min-height:240px;"
+         id="sourceContainer">
+
+      {% for t in tracks %}
+        <div class="track-card bg-light p-2"
+             style="min-width:200px; border:1px solid #aaa; border-radius:4px; cursor:grab;"
+             draggable="true"
+             data-trackid="{{ t.id }}">
+          <strong>{{ t.artist }} - {{ t.title }}</strong><br/>
+          <iframe
+            src="https://open.spotify.com/embed/track/{{ t.id }}"
+            width="200"
+            height="80"
+            frameborder="0"
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            style="border-radius:8px; margin-top:8px;">
+          </iframe>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Target row -->
+  <div class="mb-4">
+    <h5 class="text-center">Target (Drop Here in Desired Order)</h5>
+    <div class="d-flex flex-row flex-nowrap p-2 gap-3 border"
+         style="overflow-x:auto; min-height:240px;"
+         id="targetContainer">
+      <!-- user drags items here -->
+    </div>
+  </div>
+
+  <!-- Difficulty -->
+  <div class="mb-3" style="max-width:200px;">
+    <label for="difficulty" class="form-label">Difficulty (1–5)</label>
+    <select name="difficulty" id="difficulty" class="form-select">
+      {% for i in range(1,6) %}
+        <option value="{{ i }}">{{ i }} Star{% if i>1 %}s{% endif %}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button type="submit" class="btn btn-success">Submit Personalized Ranking</button>
+</form>
+
+<script>
+  const source = document.getElementById('sourceContainer');
+  const target = document.getElementById('targetContainer');
+  let dragged = null;
+
+  function handleDragStart(e) {
+    if (e.target.classList.contains('track-card')) {
+      dragged = e.target;
+      e.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+  }
+
+  function handleDrop(e, container) {
+    e.preventDefault();
+    if (dragged) {
+      const afterElement = getDragAfterElement(container, e.clientX);
+      if (!afterElement) {
+        container.appendChild(dragged);
+      } else {
+        container.insertBefore(dragged, afterElement);
+      }
+      dragged = null;
+    }
+  }
+
+  function getDragAfterElement(container, x) {
+    const draggableElements = [...container.querySelectorAll('.track-card:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = x - box.left - (box.width / 2);
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  source.addEventListener('dragstart', handleDragStart);
+  target.addEventListener('dragstart', handleDragStart);
+
+  source.addEventListener('dragover', handleDragOver);
+  target.addEventListener('dragover', handleDragOver);
+
+  source.addEventListener('drop', (e) => handleDrop(e, source));
+  target.addEventListener('drop', (e) => handleDrop(e, target));
+
+  // On form submit => gather track IDs in the order
+  document.getElementById('pRankForm').addEventListener('submit', (e) => {
+    const trackDivs = target.querySelectorAll('.track-card');
+    const order = [];
+    trackDivs.forEach(div => {
+      order.push(div.dataset.trackid);
+    });
+    document.getElementById('drag_order').value = order.join(',');
+  });
+</script>
+{% endblock %}

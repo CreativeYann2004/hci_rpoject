@@ -1,5 +1,7 @@
-import random
 import re
+import random
+import spotipy
+import spotipy.exceptions
 from flask import Blueprint, session, redirect, url_for, flash
 from functools import wraps
 from app import db
@@ -54,7 +56,7 @@ def parse_spotify_playlist_input(user_input):
 
 def get_buddy_personality_lines():
     """
-    Returns a dict of lines based on session's buddy_personality, default='friendly'.
+    Returns lines based on buddy_personality in session, default='friendly'.
     """
     personality = session.get('buddy_personality', 'friendly')
     lines = {
@@ -70,6 +72,10 @@ def get_buddy_personality_lines():
             ],
             'start': [
                 "Let's do this! I'm here to help!",
+            ],
+            'rank': [
+                "Ranking time! Let's see what you think!",
+                "Time to order some tracks—have fun!"
             ]
         },
         'strict': {
@@ -83,22 +89,77 @@ def get_buddy_personality_lines():
             ],
             'start': [
                 "You're here again? Fine, let's get it done.",
+            ],
+            'rank': [
+                "Ranking again? Don’t mess it up.",
+                "Focus and get it right this time."
             ]
         }
     }
     return lines.get(personality, lines['friendly'])
 
+########################################
+# FETCH PLAYLIST TRACKS (Popularity + Year)
+########################################
+def _fetch_playlist_tracks(sp, playlist_id, limit=300):
+    """
+    Retrieve tracks from a Spotify playlist. 
+    We store year & popularity for ranking logic, plus preview_url if available.
+    """
+    offset = 0
+    total = 0
+    added = 0
 
-########################################
-# OPTIONAL: PERSONALIZATION SETTINGS
-########################################
-def get_personalization_settings(level):
-    """
-    For older personalized approach (year_margin, snippet_seconds, hints).
-    """
-    if level == "beginner":
-        return {"year_margin": 3, "snippet_seconds": 30, "show_hints": True}
-    elif level == "intermediate":
-        return {"year_margin": 1, "snippet_seconds": 15, "show_hints": False}
-    else:  # advanced
-        return {"year_margin": 0, "snippet_seconds": 5, "show_hints": False}
+    global ALL_TRACKS
+    while offset < limit:
+        data = sp.playlist_items(
+            playlist_id,
+            limit=50,
+            offset=offset,
+            market="from_token"
+        )
+        items = data.get('items', [])
+        if not items:
+            break
+
+        for it in items:
+            track = it.get('track')
+            if not track:
+                continue
+            if track.get('is_local') or track.get('type') != 'track':
+                total += 1
+                continue
+
+            track_id = track.get('id')
+            if not track_id:
+                total += 1
+                continue
+
+            name = track.get('name', 'Unknown Title')
+            artists = track.get('artists', [{"name": "Unknown Artist"}])
+            artist_name = artists[0].get('name', '???')
+            preview_url = track.get('preview_url')
+            album_info = track.get('album', {})
+            release_date = album_info.get('release_date', '1900-01-01')
+            year = 1900
+            if release_date[:4].isdigit():
+                year = int(release_date[:4])
+
+            popularity = track.get('popularity', 0)
+
+            ALL_TRACKS.append({
+                "id": track_id,
+                "title": name,
+                "artist": artist_name,
+                "year": year,
+                "preview_url": preview_url,
+                "popularity": popularity
+            })
+            added += 1
+            total += 1
+
+        offset += 50
+        if offset >= data.get('total', 0):
+            break
+
+    return (total, added)
