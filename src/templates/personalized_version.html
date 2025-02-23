@@ -1,21 +1,57 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-6">
-    <div class="card p-4 shadow text-center">
-      <h2 class="mb-3">Adaptive Personalized UI</h2>
+  <div class="col-md-8">
+    <div class="card p-4 shadow-lg" 
+         style="background: linear-gradient(135deg, #ffffff 0%, #f7f9fc 100%); border:none;">
+
+      <h2 class="mb-4 text-center" style="font-weight:600; color:#444;">
+        Adaptive Personalized UI
+      </h2>
 
       {% if feedback %}
-        <!-- Show results if user already guessed -->
-        <div class="alert alert-info mb-4">{{ feedback }}</div>
-        <a class="btn btn-primary" href="{{ url_for('quiz_bp.personalized_version') }}">
-          Try Another
-        </a>
+        <!-- Feedback Section (Displayed AFTER user submits a guess) -->
+        <div class="card mb-4 p-3 shadow-sm"
+             style="border-left: 5px solid {% if feedback.startswith('Correct!') %}#4CAF50{% else %}#F44336{% endif %};
+                    background-color: #fefefe;">
+          <h4 class="mb-2">
+            {% if feedback.startswith('Correct!') %}
+              🎉 Nice Work!
+            {% else %}
+              ❌ Not Quite
+            {% endif %}
+          </h4>
+          <p style="margin-bottom:0.5rem;">{{ feedback }}</p>
+
+          {% if feedback.startswith('Correct!') %}
+            <p style="color:#2F6F31;">You’re really improving!</p>
+          {% else %}
+            <p style="color:#AA3333;">No worries, keep practicing!</p>
+          {% endif %}
+
+          <div class="mt-3 text-center">
+            <button class="btn btn-primary"
+                    onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
+              Try Another
+            </button>
+          </div>
+        </div>
+
+        <!-- Confetti if correct -->
+        {% if feedback.startswith('Correct!') %}
+          <canvas id="confettiCanvas" 
+                  class="w-100" 
+                  style="height:100%; position:fixed; top:0; left:0; pointer-events:none;">
+          </canvas>
+        {% endif %}
+
       {% else %}
+        <!-- Guessing Section (Displayed BEFORE user submits a guess) -->
         {% if song %}
-          <!-- Centered smaller snippet (50×50) partial coverage -->
-          <div class="mx-auto" 
-               style="width:50px; height:50px; position:relative; overflow:hidden; border:2px solid #ccc; border-radius:6px; margin-bottom:1rem;">
+          <!-- Minimal snippet embed -->
+          <div class="mx-auto mb-3 snippet-container"
+               style="width:50px; height:50px; position:relative; overflow:hidden; 
+                      border:2px solid #ccc; border-radius:6px; transition: transform 0.2s;">
             <iframe
               src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
               width="600"
@@ -25,36 +61,63 @@
               allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
             </iframe>
           </div>
-          <p class="text-muted" style="font-size:0.9rem;">
-            Press the play button to hear a snippet. No other info is visible!
+          <p class="text-muted text-center" style="font-size:0.9rem;">
+            Press play to hear a snippet. Then guess below!
           </p>
 
-          <hr/>
+          <hr style="margin:1.5rem 0;" />
 
           <form method="POST" action="{{ url_for('quiz_bp.submit_guess_personalized') }}">
+
+            <!-- If there's a buddy hint, show it in a small alert style -->
+            {% if buddy_hint %}
+            <div class="alert alert-secondary mb-3">
+              Hint: {{ buddy_hint }}
+            </div>
+            {% endif %}
+
             {% set ctype = session.challenge_type %}
             {% if ctype == 'artist' %}
-              <p class="fw-bold">Guess the Artist:</p>
-              <input type="text" name="guess" id="guess" class="form-control mb-3" placeholder="Artist name..." required>
+              <label class="fw-bold mb-1">Guess the Artist:</label>
+              <!-- Autocomplete container -->
+              <div class="position-relative mb-3">
+                <input 
+                  type="text" 
+                  name="guess" 
+                  id="guess" 
+                  class="form-control" 
+                  placeholder="Type artist name..."
+                  required
+                >
+                <div id="guess-autocomplete-list" class="autocomplete-items"></div>
+              </div>
 
             {% elif ctype == 'title' %}
-              <p class="fw-bold">Guess the Title:</p>
-              <input type="text" name="guess" class="form-control mb-3" placeholder="Song title..." required>
+              <label class="fw-bold mb-1">Guess the Title:</label>
+              <input 
+                type="text" 
+                name="guess" 
+                class="form-control mb-3" 
+                placeholder="Song title..." 
+                required
+              >
 
             {% else %}
-              <p class="fw-bold">Guess the Release Year</p>
-              <!-- Show margin text based on the user's ELO or approach logic -->
-              <p class="text-muted" style="margin-top:-0.5rem;">
-                {% if current_user().personalized_guess_elo > 1400 %}
-                  (Exact year required)
-                {% else %}
-                  (±2 years allowed)
-                {% endif %}
-              </p>
-              <input type="text" name="guess" class="form-control mb-3" placeholder="e.g. 1999" required>
+              <label class="fw-bold mb-1">Guess the Release Year:</label>
+              <input 
+                type="text" 
+                name="guess" 
+                class="form-control mb-3" 
+                placeholder="e.g. 1999" 
+                required
+              >
             {% endif %}
-            <button class="btn btn-success">Submit Guess</button>
+
+            <button class="btn btn-success px-4 py-2" style="font-weight:500;">
+              Submit Guess
+            </button>
           </form>
+
         {% else %}
           <p><em>No track selected. Try again!</em></p>
         {% endif %}
@@ -62,4 +125,140 @@
     </div>
   </div>
 </div>
+
+<!-- Optional hover effect for snippet -->
+<style>
+.snippet-container:hover {
+  transform: scale(1.05);
+  border-color: #aaa;
+}
+/* Autocomplete styles (same as in random_version) */
+.autocomplete-items {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  background: #fff;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.autocomplete-items div {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #ddd;
+}
+.autocomplete-items div:hover {
+  background-color: #e9e9e9;
+}
+</style>
+
+<script>
+// Confetti effect if correct
+document.addEventListener("DOMContentLoaded", function() {
+  const feedbackEl = document.querySelector(".card.mb-4.p-3.shadow-sm");
+  if (feedbackEl && feedbackEl.innerHTML.includes('Correct!')) {
+    startConfetti();
+    setTimeout(stopConfetti, 3500);
+  }
+});
+
+let confettiInterval = null;
+function startConfetti() {
+  const canvas = document.getElementById("confettiCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+
+  const confettis = [];
+  for (let i=0; i<80; i++) {
+    confettis.push({
+      x: Math.random()*W,
+      y: Math.random()*H - H,
+      r: Math.random()*6 + 4,
+      d: Math.random()*60 + 10,
+      color: "hsl(" + Math.floor(Math.random()*360) + ",70%,60%)",
+      tilt: Math.floor(Math.random()*10) - 10,
+      tiltAngleIncremental: Math.random()*0.07 + 0.05,
+      tiltAngle: 0
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    confettis.forEach((c) => {
+      c.tiltAngle += c.tiltAngleIncremental;
+      c.y += (Math.cos(c.d) + 3)/2;
+      c.tilt = Math.sin(c.tiltAngle) * 15;
+      if (c.y > H) {
+        c.y = -10;
+        c.x = Math.random()*W*1.5;
+      }
+      ctx.beginPath();
+      ctx.lineWidth = c.r;
+      ctx.strokeStyle = c.color;
+      ctx.moveTo(c.x + c.tilt + c.r, c.y);
+      ctx.lineTo(c.x + c.tilt, c.y + c.r);
+      ctx.stroke();
+    });
+  }
+
+  confettiInterval = setInterval(draw, 20);
+}
+
+function stopConfetti() {
+  clearInterval(confettiInterval);
+  const canvas = document.getElementById("confettiCanvas");
+  if (canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+// Autocomplete for artist guesses:
+document.addEventListener("DOMContentLoaded", function() {
+  const guessInput = document.getElementById("guess");
+  if (!guessInput) return;
+
+  const listContainer = document.getElementById("guess-autocomplete-list");
+  if (!listContainer) return;
+
+  guessInput.addEventListener("input", async function() {
+    const query = this.value.trim();
+    listContainer.innerHTML = "";
+    if (!query) return;
+
+    try {
+      const resp = await fetch(`/autocomplete/artist?q=${encodeURIComponent(query)}`);
+      if (!resp.ok) return;
+      const suggestions = await resp.json();
+      suggestions.forEach(item => {
+        const div = document.createElement("div");
+        div.textContent = item;
+        div.addEventListener("click", () => {
+          guessInput.value = item;
+          listContainer.innerHTML = "";
+        });
+        listContainer.appendChild(div);
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  // Close the dropdown if clicked outside
+  document.addEventListener("click", (e) => {
+    if (e.target !== guessInput) {
+      listContainer.innerHTML = "";
+    }
+  });
+});
+</script>
 {% endblock %}
