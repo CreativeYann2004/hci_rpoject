@@ -101,8 +101,16 @@ def random_rank():
 
     # e.g. pick 2..4 random tracks
     n = random.choice([2, 3, 4][:max_n])
-    sample_tracks = random.sample(ALL_TRACKS, n)
+    
+    # Ensure unique popularity values
+    sample_tracks = []
+    while len(sample_tracks) < n:
+        track = random.choice(ALL_TRACKS)
+        if track not in sample_tracks and all(t['popularity'] != track['popularity'] for t in sample_tracks):
+            sample_tracks.append(track)
+
     session['ranking_tracks'] = [t['id'] for t in sample_tracks]
+    session['ranking_mode'] = session.get('ranking_mode', 'popularity')  # Ensure default is 'popularity'
 
     return render_template("random_rank_drag.html", tracks=sample_tracks)
 
@@ -111,25 +119,14 @@ def random_rank():
 @require_login
 def submit_random_rank():
     user = current_user()
-    ranking_mode = session.get('ranking_mode', 'timeline')  # or 'popularity'
+    ranking_mode = session.get('ranking_mode', 'popularity')
     track_ids = session.get('ranking_tracks', [])
     if not track_ids:
         flash("No tracks to rank! Please start again.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    drag_order = request.form.get("drag_order", "").strip()
-    final_ids = []
-    if drag_order:
-        final_ids = [x for x in drag_order.split(",") if x]
-    else:
-        # fallback if we used numeric inputs
-        submitted_order = []
-        for tid in track_ids:
-            rank_str = request.form.get(f"rank_{tid}")
-            if rank_str and rank_str.isdigit():
-                submitted_order.append((tid, int(rank_str)))
-        submitted_order.sort(key=lambda x: x[1])
-        final_ids = [x[0] for x in submitted_order]
+    final_order = request.form.get("final_order", "").strip()
+    final_ids = [x for x in final_order.split(",") if x]
 
     final_ids = [x for x in final_ids if x in track_ids]
     if not final_ids:
@@ -143,7 +140,7 @@ def submit_random_rank():
     if ranking_mode == 'timeline':
         correct_ordered = sorted(valid_tracks, key=lambda t: t['year'])
     else:
-        correct_ordered = sorted(valid_tracks, key=lambda t: t['popularity'])
+        correct_ordered = sorted(valid_tracks, key=lambda t: t['popularity'], reverse=True)
     correct_ids_in_order = [t['id'] for t in correct_ordered]
 
     def count_correct_pairs(order_list):
@@ -256,7 +253,7 @@ def personalized_rank():
         base_count = 4
 
     difficulty = session.get('difficulty', 'normal')  # 'easy', 'normal', 'hard'
-    ranking_mode = session.get('ranking_mode', 'timeline')  # 'timeline' or 'popularity'
+    ranking_mode = session.get('ranking_mode', 'popularity')  # Ensure default is 'popularity'
 
     missed_list = user.get_missed_songs()
     missed_candidates = [t for t in ALL_TRACKS if t['id'] in missed_list]
@@ -322,7 +319,7 @@ def personalized_rank_from_session():
 @require_login
 def submit_personalized_rank():
     user = current_user()
-    ranking_mode = session.get('ranking_mode', 'timeline')
+    ranking_mode = session.get('ranking_mode', 'popularity')
     track_ids = session.get('personalized_ranking_tracks', [])
     if not track_ids:
         flash("No tracks to rank! Please start again.", "warning")
@@ -424,7 +421,7 @@ def ranking_results():
     outcome = data['outcome']
 
     # Let's also fetch the ranking_mode from session if we want to display it
-    ranking_mode = session.get('ranking_mode', 'timeline')  # or 'popularity'
+    ranking_mode = session.get('ranking_mode', 'popularity')  # or 'popularity'
 
     # Helper to get the track object
     def get_track(tid):

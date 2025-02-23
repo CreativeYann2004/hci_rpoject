@@ -27,7 +27,7 @@
     <!-- TOP ROW: rank boxes -->
     {% if tracks|length in [2, 3, 4] %}
     <div class="row text-center mb-4" style="justify-content: center;">
-      {% for i in range(1, tracks|length + 1) %}
+      {% for i in range(tracks|length, 0, -1) %}
         <div class="col" style="flex: 0 0 auto; max-width: 25%;">
           <div class="dropzone card shadow-sm p-3 mb-2"
                style="min-height: 350px; border:3px dashed #999; cursor:default;"
@@ -120,7 +120,7 @@
   // DRAGSTART => store the card being dragged
   document.addEventListener('dragstart', (evt) => {
     if (evt.target.classList.contains('song-card')) {
-      draggedItem = evt.target;z
+      draggedItem = evt.target;
       evt.dataTransfer.effectAllowed = 'move';
     }
   });
@@ -161,7 +161,7 @@
         orderArr.push("");
       }
     });
-    document.getElementById('final_order').value = orderArr.join(',');
+    document.getElementById('final_order').value = orderArr.reverse().join(',');
   }
 </script>
 {% endblock %}
