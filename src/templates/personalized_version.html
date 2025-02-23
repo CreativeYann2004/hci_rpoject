@@ -1,61 +1,65 @@
 {% extends "layout.html" %}
 {% block content %}
-<h2>Adaptive Personalized UI</h2>
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card p-4 shadow text-center">
+      <h2 class="mb-3">Adaptive Personalized UI</h2>
 
-{% if feedback %}
-  <div class="alert alert-info">{{ feedback }}</div>
-  <a class="btn btn-primary" href="{{ url_for('quiz_bp.personalized_version') }}">
-    Try Another
-  </a>
-{% else %}
-  {% if song %}
-    <!-- Example cropped embed like random_version.html -->
-    <div style="
-      width:50px;
-      height:50px;
-      position:relative;
-      overflow:hidden;
-      border:1px solid #ccc;
-      margin-bottom:1rem;
-    ">
-      <iframe
-        src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
-        width="600"
-        height="600"
-        frameborder="0"
-        style="position:absolute; top:-265px; left:-511px;"
-        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
-      </iframe>
-    </div>
-
-    {% if hints and hints|length > 0 %}
-      <div class="alert alert-warning">
-        <strong>Hint{{ hints|length > 1 and 's' or '' }}:</strong>
-        <ul>
-        {% for h in hints %}
-          <li>{{ h }}</li>
-        {% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-
-    {# Challenge type is in session.challenge_type. Let's just show a single input #}
-    {% set ctype = session.challenge_type %}
-    <form method="POST" action="{{ url_for('quiz_bp.submit_guess_personalized') }}">
-      {% if ctype == 'artist' %}
-        <p>Guess the <strong>Artist</strong>:</p>
-        <input type="text" name="guess" id="guess" class="form-control" placeholder="Artist name..." required>
-      {% elif ctype == 'title' %}
-        <p>Guess the <strong>Title</strong>:</p>
-        <input type="text" name="guess" class="form-control" placeholder="Song Title..." required>
+      {% if feedback %}
+        <!-- Show results if user already guessed -->
+        <div class="alert alert-info mb-4">{{ feedback }}</div>
+        <a class="btn btn-primary" href="{{ url_for('quiz_bp.personalized_version') }}">
+          Try Another
+        </a>
       {% else %}
-        <p>Guess the <strong>Release Year</strong>:</p>
-        <input type="text" name="guess" class="form-control" placeholder="e.g. 1999" required>
+        {% if song %}
+          <!-- Centered smaller snippet (50×50) partial coverage -->
+          <div class="mx-auto" 
+               style="width:50px; height:50px; position:relative; overflow:hidden; border:2px solid #ccc; border-radius:6px; margin-bottom:1rem;">
+            <iframe
+              src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
+              width="600"
+              height="600"
+              frameborder="0"
+              style="position:absolute; top:-265px; left:-513px;"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
+            </iframe>
+          </div>
+          <p class="text-muted" style="font-size:0.9rem;">
+            Press the play button to hear a snippet. No other info is visible!
+          </p>
+
+          <hr/>
+
+          <form method="POST" action="{{ url_for('quiz_bp.submit_guess_personalized') }}">
+            {% set ctype = session.challenge_type %}
+            {% if ctype == 'artist' %}
+              <p class="fw-bold">Guess the Artist:</p>
+              <input type="text" name="guess" id="guess" class="form-control mb-3" placeholder="Artist name..." required>
+
+            {% elif ctype == 'title' %}
+              <p class="fw-bold">Guess the Title:</p>
+              <input type="text" name="guess" class="form-control mb-3" placeholder="Song title..." required>
+
+            {% else %}
+              <p class="fw-bold">Guess the Release Year</p>
+              <!-- Show margin text based on the user's ELO or approach logic -->
+              <p class="text-muted" style="margin-top:-0.5rem;">
+                {% if current_user().personalized_guess_elo > 1400 %}
+                  (Exact year required)
+                {% else %}
+                  (±2 years allowed)
+                {% endif %}
+              </p>
+              <input type="text" name="guess" class="form-control mb-3" placeholder="e.g. 1999" required>
+            {% endif %}
+            <button class="btn btn-success">Submit Guess</button>
+          </form>
+        {% else %}
+          <p><em>No track selected. Try again!</em></p>
+        {% endif %}
       {% endif %}
-      <button class="btn btn-success mt-2">Submit Guess</button>
-    </form>
-  {% else %}
-    <p><em>No track selected. Try again!</em></p>
-  {% endif %}
-{% endif %}
+    </div>
+  </div>
+</div>
 {% endblock %}
