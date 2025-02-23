@@ -1,0 +1,44 @@
+{# templates/personalized_mistakes.html #}
+{% extends "layout.html" %}
+{% block content %}
+<h2>Your Missed Songs</h2>
+
+{% if missed_tracks and missed_tracks|length > 0 %}
+  <p>You have {{ missed_tracks|length }} missed track(s). Select “Rank These” to practice them.</p>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Artist</th>
+        <th>Title</th>
+        <th>Year</th>
+        <th>Preview</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in missed_tracks %}
+      <tr>
+        <td>{{ t.artist }}</td>
+        <td>{{ t.title }}</td>
+        <td>{{ t.year }}</td>
+        <td>
+          <iframe
+            src="https://open.spotify.com/embed/track/{{ t.id }}"
+            width="200"
+            height="80"
+            frameborder="0"
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
+          </iframe>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="POST" action="{{ url_for('quiz_bp.rank_mistakes_only') }}">
+    <button class="btn btn-info">Rank These Missed Songs</button>
+  </form>
+
+{% else %}
+  <p>You have no missed songs!</p>
+{% endif %}
+{% endblock %}

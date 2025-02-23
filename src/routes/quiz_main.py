@@ -2,22 +2,23 @@
 import random
 import spotipy
 import spotipy.exceptions
-from flask import Blueprint, session, redirect, url_for, flash, render_template, request
+from flask import Blueprint, session, redirect, url_for, flash, render_template, request, jsonify
 from functools import wraps
 from app import db
 from models import User, GuessLog
 from routes.auth import get_spotify_client
 from routes.quiz_base import (
     quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS, get_buddy_personality_lines,
-    generate_hints, _fetch_playlist_tracks
+    generate_hints, _fetch_playlist_tracks, parse_spotify_playlist_input
 )
-from routes.quiz_base import parse_spotify_playlist_input
+
 
 def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
     return User.query.get(uid)
+
 
 def require_login(f):
     @wraps(f)
@@ -27,6 +28,7 @@ def require_login(f):
             return redirect(url_for('auth_bp.login'))
         return f(*args, **kwargs)
     return wrapper
+
 
 @quiz_bp.route('/dashboard')
 @require_login
@@ -57,6 +59,7 @@ def dashboard():
                            user=user,
                            missed_count=missed_count,
                            all_songs=ALL_TRACKS)
+
 
 @quiz_bp.route('/settings', methods=['GET', 'POST'])
 @require_login
@@ -89,16 +92,20 @@ def settings():
         buddy_personality=curr_buddy
     )
 
+
 @quiz_bp.route('/scoreboard')
 @require_login
 def scoreboard():
     users = User.query.all()
+
     def accuracy(u):
         if u.total_attempts == 0:
             return 0
         return u.total_correct / u.total_attempts
+
     sorted_users = sorted(users, key=lambda x: (accuracy(x), x.total_correct), reverse=True)
     return render_template('scoreboard.html', all_users=sorted_users)
+
 
 @quiz_bp.route('/select_playlist', methods=['GET','POST'])
 @require_login
@@ -151,6 +158,7 @@ def select_playlist():
     flash("Playlist selected! Tracks will load once you start playing or return to the dashboard.", "success")
     return redirect(url_for('quiz_bp.dashboard'))
 
+
 @quiz_bp.route('/recent')
 @require_login
 def recent_played():
@@ -179,6 +187,7 @@ def recent_played():
                 'played_at': played_at
             })
     return render_template("recent.html", tracks=tracks)
+
 
 ########################################
 # RANDOM VERSION (Guess)
@@ -218,9 +227,7 @@ def random_version():
     show_hint = (random.random() < 0.4)
     if show_hint:
         generated = generate_hints(chosen, ctype, current_user(), is_personalized=False)
-        # We store them in session['buddy_hint'] so the buddy repeats the same text
         if generated:
-            # We combine them into one big string or keep them separate
             final_hint_text = " | ".join(generated)
             session['buddy_hint'] = final_hint_text
             session["buddy_message"] = random.choice(lines['hint'])
@@ -228,7 +235,6 @@ def random_version():
             session.pop('buddy_hint', None)
             session["buddy_message"] = random.choice(lines['start'])
     else:
-        # No hints => clear buddy_hint
         session.pop('buddy_hint', None)
         session["buddy_message"] = random.choice(lines['start'])
 
@@ -281,14 +287,13 @@ def submit_guess():
     outcome = 1.0 if guess_correct else 0.0
     user.update_elo('random', 'guess', outcome)
 
-    # NEW: Log attempt
-    from models import GuessLog
+    # Log attempt
     guess_log = GuessLog(
         user_id=user.id,
         track_id=track_id,
         question_type=challenge,
         is_correct=guess_correct,
-        time_taken=0.0,  # we aren't measuring time here, but you could
+        time_taken=0.0,
         approach='random'
     )
     db.session.add(guess_log)
@@ -300,15 +305,12 @@ def submit_guess():
             missed_list.remove(chosen["id"])
         fact = random.choice(RANDOM_MUSIC_FACTS)
         session["buddy_message"] = fact
-        # Clear the buddy_hint now that we've guessed
         session.pop('buddy_hint', None)
     else:
         feedback = f"Wrong! Correct: {chosen['artist']} - {chosen['title']} ({chosen['year']})"
         if chosen["id"] not in missed_list:
             missed_list.append(chosen["id"])
         session["buddy_message"] = random.choice(lines['wrong'])
-        # Keep the buddy_hint if we want them to guess again
-        # But if you want them to keep guessing the same track, you'd not set a new track_id
 
     user.set_missed_songs(missed_list)
     db.session.commit()
@@ -323,13 +325,10 @@ def random_feedback():
     fb = session.get("feedback")
     return render_template('random_version.html', song=None, feedback=fb, hints=[])
 
+
 @quiz_bp.route('/choose_playlist', methods=['GET', 'POST'])
 @require_login
 def choose_playlist():
-    """
-    Minimal route: shows the user's own playlists, plus a form for a custom link.
-    No official/hardcoded playlists. No track counts or ID displayed.
-    """
     sp = get_spotify_client()
     if not sp:
         flash("Please connect your Spotify account first!", "warning")
@@ -350,7 +349,6 @@ def choose_playlist():
         elif choice_source == 'custom':
             custom_val = request.form.get('custom_playlist_link', '').strip()
             if custom_val:
-                from routes.quiz_base import parse_spotify_playlist_input
                 parsed_id = parse_spotify_playlist_input(custom_val)
                 if parsed_id:
                     session['playlist_id'] = parsed_id
@@ -363,7 +361,6 @@ def choose_playlist():
 
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # GET => fetch up to 50 user playlists (one page)
     user_playlists = []
     try:
         result = sp.current_user_playlists(limit=50, offset=0)
@@ -376,3 +373,28 @@ def choose_playlist():
         "choose_playlist.html",
         user_playlists=user_playlists
     )
+
+
+# ----------------------------
+# NEW: Autocomplete for artists
+# ----------------------------
+@quiz_bp.route('/autocomplete/artist')
+@require_login
+def autocomplete_artist():
+    """
+    Return a list of up to 10 artist suggestions from the loaded playlist
+    matching the query substring.
+    """
+    q = request.args.get("q", "").lower()
+    if not q:
+        return jsonify([])
+
+    # Build a set of unique artists from ALL_TRACKS
+    artists = set()
+    for track in ALL_TRACKS:
+        if track["artist"].lower().startswith(q):
+            artists.add(track["artist"])
+
+    # Sort them and limit the number of returned suggestions
+    suggestions = sorted(list(artists), key=lambda x: x.lower())
+    return jsonify(suggestions[:10])
