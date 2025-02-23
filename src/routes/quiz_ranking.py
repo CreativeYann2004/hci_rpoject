@@ -34,17 +34,16 @@ def random_rank():
     lines = get_buddy_personality_lines()
     session["buddy_message"] = random.choice(lines['rank'])
 
-    max_n = min(len(ALL_TRACKS), 5)
+    max_n = min(len(ALL_TRACKS), 4)  # Limit to a maximum of 4 tracks
     if max_n < 2:
         flash("Not enough tracks to rank!", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    n = random.choice([3,4,5][:max_n])
+    n = random.choice([2, 3, 4][:max_n])  # Ensure the number of tracks is 2, 3, or 4
     sample_tracks = random.sample(ALL_TRACKS, n)
     session['ranking_tracks'] = [t['id'] for t in sample_tracks]
 
     return render_template("random_rank_drag.html", tracks=sample_tracks)
-
 
 @quiz_bp.route('/submit_random_rank', methods=['POST'])
 @require_login

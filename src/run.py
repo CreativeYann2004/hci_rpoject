@@ -1,6 +1,12 @@
 from app import create_app
+import logging
 
-app = create_app()
+logging.basicConfig(level=logging.DEBUG)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+try:
+    app = create_app()
+    if __name__ == '__main__':
+        app.run(debug=True)
+except Exception as e:
+    logging.exception("Failed to start the Flask application")
+    raise
