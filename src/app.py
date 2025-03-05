@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, session
 from flask_sqlalchemy import SQLAlchemy
 import datetime

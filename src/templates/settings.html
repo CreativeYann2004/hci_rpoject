@@ -1,46 +1,20 @@
 {% extends "layout.html" %}
 {% block content %}
-<h2>Settings (Project Manual/HCI)</h2>
+<h2>Settings</h2>
 
-<form method="POST">
+<form method="POST" class="mt-4">
+
   <div class="mb-3">
     <label class="form-label">Color Theme</label>
     <select name="color_theme" class="form-select">
       <option value="navy" {% if session.color_theme == 'navy' %}selected{% endif %}>Navy</option>
       <option value="light" {% if session.color_theme == 'light' %}selected{% endif %}>Light</option>
     </select>
-  </div>
-
-  <div class="mb-3">
-    <label class="form-label">Difficulty</label>
-    <select name="difficulty" class="form-select">
-      <option value="easy" {% if current_diff == 'easy' %}selected{% endif %}>Easy (±3 years)</option>
-      <option value="normal" {% if current_diff == 'normal' %}selected{% endif %}>Normal (±1 year)</option>
-      <option value="hard" {% if current_diff == 'hard' %}selected{% endif %}>Hard (Exact year)</option>
-    </select>
-  </div>
-
-  <div class="mb-3">
-    <label class="form-label">Spotify Playlist ID/URI (Optional)</label>
-    <input 
-      type="text" 
-      name="playlist_id" 
-      class="form-control"
-      placeholder="e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
-      value="{{ current_playlist|default('') }}"
-    />
-    <small class="form-text text-muted">
-      Paste the full link or ID; this will override your old playlist if not blank.
+    <small class="text-muted">
+      Switch between a dark-ish navy theme or a brighter light theme.
     </small>
   </div>
 
-  <div class="mb-3">
-    <label class="form-label">Buddy Personality</label>
-    <select name="buddy_personality" class="form-select">
-      <option value="friendly" {% if buddy_personality == 'friendly' %}selected{% endif %}>Friendly</option>
-      <option value="strict" {% if buddy_personality == 'strict' %}selected{% endif %}>Strict</option>
-    </select>
-  </div>
 
   <button class="btn btn-primary">Save Settings</button>
 </form>

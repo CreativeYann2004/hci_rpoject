@@ -16,15 +16,13 @@ from routes.quiz_base import (
 ############################
 # Advanced Personalization #
 ############################
-
 def get_decade(year):
     return (year // 10) * 10
 
 def time_decay_weight(guess_timestamp):
     """
-    Example: a simple exponential decay.
-    If a miss happened 'd' days ago, weight = 0.5^(d/7).
-    (So each additional week halves the impact.)
+    Exponential decay based on how many days ago the guess happened.
+    e.g., each additional week halves the impact.
     """
     now = datetime.utcnow()
     diff_days = (now - guess_timestamp).days
@@ -32,133 +30,195 @@ def time_decay_weight(guess_timestamp):
 
 def build_personalization_scores(user):
     """
-    Examine the user's guess logs. 
-    For each missed guess, increment:
-      - The artist's "miss score"
-      - The decade's "miss score"
-      - The track's "miss score" (if you want to directly pick repeated misses)
-    Weighted by recency (time_decay_weight).
-    Returns dictionaries: (artist_scores, decade_scores, track_scores).
+    Examine the user's guess logs to see which artists, decades, or tracks
+    gave them trouble. Weighted by recency, plus user’s favorite_genres if any.
     """
     artist_scores = {}
     decade_scores = {}
     track_scores = {}
+    genre_scores = {}
 
-    # Gather all logs for user
-    logs = user.guess_logs  # relationship from models.py
-    for log in logs:
+    prefs = user.get_preferences()
+    fav_genres = prefs.get('favorite_genres', [])
+
+    for log in user.guess_logs:
         if not log.is_correct:
-            # Weighted by how recent the attempt was
             w = time_decay_weight(log.timestamp)
-            # Find track in ALL_TRACKS
             track = next((t for t in ALL_TRACKS if t['id'] == log.track_id), None)
             if track:
-                # Update artist
                 a = track['artist'].lower()
-                artist_scores[a] = artist_scores.get(a, 0) + w
-
-                # Update decade
                 d = get_decade(track['year'])
+                artist_scores[a] = artist_scores.get(a, 0) + w
                 decade_scores[d] = decade_scores.get(d, 0) + w
-
-                # Update track
                 track_scores[track['id']] = track_scores.get(track['id'], 0) + w
 
-    return artist_scores, decade_scores, track_scores
+                # If track has genre_list, weigh these
+                for g in track.get("genre_list", []):
+                    multiplier = 2.0 if g in fav_genres else 1.0
+                    genre_scores[g] = genre_scores.get(g, 0) + w * multiplier
+
+    return artist_scores, decade_scores, track_scores, genre_scores
 
 def pick_personalized_track(user):
     """
-    Weighted approach:
-     1. Build scores for each artist & decade based on misses (weighted by recency).
-     2. Combine the top few artists/decades into a 'pool' of candidate tracks.
-     3. If no misses are found, fallback to random pick.
+    Weighted approach: pick from the top missed items more frequently.
+    Fallback to random if no misses.
     """
     if not ALL_TRACKS:
         return None
 
-    artist_scores, decade_scores, track_scores = build_personalization_scores(user)
+    artist_scores, decade_scores, track_scores, genre_scores = build_personalization_scores(user)
 
-    if not artist_scores and not decade_scores:
-        # If user has no misses, fallback to random
+    # Fallback if user has no misses
+    if not artist_scores and not decade_scores and not track_scores and not genre_scores:
         return random.choice(ALL_TRACKS)
 
-    # Identify which artist(s) or decade(s) have the highest score
-    # We'll say we focus on the top 3 artists and top 3 decades missed
-    top_artists = sorted(artist_scores.keys(), key=lambda a: artist_scores[a], reverse=True)[:3]
-    top_decades = sorted(decade_scores.keys(), key=lambda d: decade_scores[d], reverse=True)[:3]
+    def top_n(d, n=3):
+        return sorted(d.keys(), key=lambda k: d[k], reverse=True)[:n]
 
-    # Build candidate list
+    top_artists = top_n(artist_scores)
+    top_decades = top_n(decade_scores)
+    top_genres = top_n(genre_scores)
+    top_tracks = top_n(track_scores)
+
+    # Build candidate set
     candidates = []
     for t in ALL_TRACKS:
         a = t['artist'].lower()
         d = get_decade(t['year'])
-        if a in top_artists or d in top_decades:
+        tid = t['id']
+        tgenres = t.get('genre_list', [])
+        if (a in top_artists) or (d in top_decades) \
+           or (tid in top_tracks) or (set(tgenres).intersection(top_genres)):
             candidates.append(t)
 
-    # If that yields no candidates (rare case), fallback
     if not candidates:
         return random.choice(ALL_TRACKS)
 
-    # Weighted random: each track gets weight = sum of (artist_scores + decade_scores)
-    # for its artist and decade.
+    # Weighted random
     weighted_candidates = []
     for t in candidates:
         a = t['artist'].lower()
         d = get_decade(t['year'])
-        weight = artist_scores.get(a, 0) + decade_scores.get(d, 0)
-        # If track-based weighting is desired, add track_scores[t['id']] too
-        weight += track_scores.get(t['id'], 0)
-        # Minimum weight to avoid zero
-        weight = max(weight, 0.1)
-        weighted_candidates.append((t, weight))
+        tid = t['id']
+        # sum up the scores
+        artist_scores_, decade_scores_, track_scores_, genre_scores_ = build_personalization_scores(user)
+        w = artist_scores_.get(a, 0) + decade_scores_.get(d, 0) + track_scores_.get(tid, 0)
+        for g in t.get('genre_list', []):
+            w += genre_scores_.get(g, 0)
+        if w < 0.1:
+            w = 0.1
+        weighted_candidates.append((t, w))
 
-    # Now pick based on these weights
-    total_weight = sum(w for (_, w) in weighted_candidates)
+    total_weight = sum(wc[1] for wc in weighted_candidates)
     r = random.uniform(0, total_weight)
     cumulative = 0
     for (track_obj, w) in weighted_candidates:
         cumulative += w
         if r <= cumulative:
             return track_obj
-
-    # Fallback
     return random.choice(weighted_candidates)[0]
 
-
-########################
-# Legacy adaptiveness  #
-########################
-
+########################################
+# Additional adaptive question type logic
+########################################
 def get_user_type_stats(user):
     if 'type_misses' not in session:
         session['type_misses'] = {'artist': 0, 'title': 0, 'year': 0}
-    return session['type_misses']
+    if 'quick_misses' not in session:
+        session['quick_misses'] = {'artist': 0, 'title': 0, 'year': 0}
+    return session['type_misses'], session['quick_misses']
 
-def record_miss_for_type(question_type):
-    if 'type_misses' not in session:
-        session['type_misses'] = {'artist': 0, 'title': 0, 'year': 0}
-    session['type_misses'][question_type] += 1
+def record_miss_for_type(qtype, time_taken=0.0):
+    type_misses, quick_misses = get_user_type_stats(current_user())
+    type_misses[qtype] += 1
+    if time_taken < 5.0:
+        quick_misses[qtype] += 1
+    session['type_misses'] = type_misses
+    session['quick_misses'] = quick_misses
 
 def pick_question_type_adaptive(user):
-    """
-    Simple logic: we weigh question types by how many times the user missed them.
-    If they've missed year questions a lot, we choose 'year' more often, etc.
-    """
-    type_stats = get_user_type_stats(user)
-    total_misses = sum(type_stats.values())
-    if total_misses == 0:
-        return random.choice(["artist", "title", "year"])
-
-    weighted_pool = []
-    for qtype in ["artist", "title", "year"]:
-        count = type_stats.get(qtype, 0)
-        weighted_pool += [qtype] * (count + 1)
-
-    return random.choice(weighted_pool)
-
+    type_misses, quick_misses = get_user_type_stats(user)
+    qtypes = ["artist", "title", "year"]
+    weights = {}
+    for qt in qtypes:
+        w = 1 + type_misses[qt] + 0.5 * quick_misses[qt]
+        weights[qt] = w
+    total_w = sum(weights.values())
+    r = random.uniform(0, total_w)
+    cumul = 0
+    for qt in qtypes:
+        cumul += weights[qt]
+        if r <= cumul:
+            return qt
+    return random.choice(qtypes)
 
 ############################
-# Personalized Guess Route #
+# HELPER for stats panel
+############################
+def get_top_missed_artists(user, n=5):
+    """
+    Return a list of (artist_name, score) for the top N missed artists.
+    """
+    artist_scores, _, _, _ = build_personalization_scores(user)
+    # Sort by highest score
+    sorted_artists = sorted(artist_scores.items(), key=lambda x: x[1], reverse=True)
+    # Convert back from lowercase to original-case if needed:
+    # but we only have the lowercase keys. We'll keep them as is or capitalize them
+    return sorted_artists[:n]
+
+def get_elo_history(user, limit=5):
+    """
+    Return a small list of (label, value) for the user’s last <limit> personalized guess logs,
+    capturing ELO after each guess.
+    """
+    # Grab the user’s guess_logs for approach='personalized'
+    # Sort by timestamp ascending
+    relevant = [gl for gl in user.guess_logs if gl.approach=='personalized']
+    relevant.sort(key=lambda x: x.timestamp)
+    # For each guess, record (short_date, ELO) after that guess
+    # We’ll incrementally recalc or store the ELO in real-time
+    # For simplicity, we’ll just store user.personalized_guess_elo at that time
+    # but we only have final ELO. We'll just approximate or do a rolling approach:
+    logs = []
+    temp_elo = 1200
+    for g in relevant:
+        # outcome
+        outcome = 1.0 if g.is_correct else 0.0
+        old_elo = temp_elo
+        new_elo = old_elo + 32*(outcome - 0.5)
+        temp_elo = round(new_elo)
+        label_date = g.timestamp.strftime('%m/%d')
+        logs.append({"label": label_date, "value": temp_elo})
+
+    # Just return the last <limit>
+    return logs[-limit:]
+
+def get_accuracy_history(user, limit=5):
+    """
+    Return a list of floating values (0..1) representing moving accuracy over time,
+    for the user’s last N guesses in personalized approach.
+    """
+    relevant = [gl for gl in user.guess_logs if gl.approach=='personalized']
+    relevant.sort(key=lambda x: x.timestamp)
+    if not relevant:
+        return []
+
+    # We'll do a sliding window accuracy. For each guess in chronological order,
+    # compute accuracy up to that point.
+    results = []
+    correct_count = 0
+    total_so_far = 0
+    for g in relevant:
+        total_so_far += 1
+        if g.is_correct:
+            correct_count += 1
+        results.append(correct_count / total_so_far)
+
+    return results[-limit:]
+
+############################
+# Personalized Guess
 ############################
 @quiz_bp.route('/personalized_version')
 @require_login
@@ -168,19 +228,18 @@ def personalized_version():
         flash("No tracks found. Please select/import a playlist first.", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # ELO-based snippet length example
+    # ELO-based snippet logic
     if user.personalized_guess_elo > 1400:
-        snippet_length_seconds = 15
+        snippet = 15
     elif user.personalized_guess_elo < 1100:
-        snippet_length_seconds = 45
+        snippet = 45
     else:
-        snippet_length_seconds = 30
-    session['snippet_length'] = snippet_length_seconds
+        snippet = 30
+    session['snippet_length'] = snippet
 
-    # Attempt advanced personalized pick
     chosen = pick_personalized_track(user)
     if not chosen:
-        flash("No track available for personalization. Using random fallback.", "warning")
+        flash("No track for personalization; fallback random.", "warning")
         chosen = random.choice(ALL_TRACKS)
 
     ctype = pick_question_type_adaptive(user)
@@ -188,27 +247,38 @@ def personalized_version():
     session["challenge_type"] = ctype
     session['question_start_time'] = time.time()
 
-    # Show extended hints if user is struggling
-    show_extended_hints = (user.get_accuracy() < 0.5) or (user.personalized_guess_elo < 1300)
-    generated_hints = generate_hints(chosen, ctype, user, is_personalized=show_extended_hints)
-
     lines = get_buddy_personality_lines()
     times_missed = user.get_missed_songs().count(chosen["id"])
     if times_missed >= 2:
-        session["buddy_message"] = f"I see we've had trouble with this one {times_missed} times. Let's try again!"
+        session["buddy_message"] = f"We've struggled with this track {times_missed} times. Let's do it!"
     else:
         if user.get_accuracy() < 0.5:
             session["buddy_message"] = "It’s okay if you mess up—we’ll keep practicing!"
         else:
             session["buddy_message"] = random.choice(lines['start'])
 
-    if generated_hints:
-        session['buddy_hint'] = " | ".join(generated_hints)
+    # Hints
+    hints = generate_hints(chosen, ctype, user, is_personalized=True)
+    if hints:
+        session['buddy_hint'] = " | ".join(hints)
     else:
         session.pop('buddy_hint', None)
 
-    return render_template("personalized_version.html", song=chosen, feedback=None, hints=[])
+    # Prepare side panel data
+    top_missed = get_top_missed_artists(user, n=5)
+    elo_hist = get_elo_history(user, limit=6)
+    acc_hist = get_accuracy_history(user, limit=6)
 
+    return render_template(
+        "personalized_version.html",
+        song=chosen,
+        feedback=None,
+        hints=[],
+        user=user,
+        top_missed_artists=top_missed,
+        elo_history=elo_hist,
+        acc_history=acc_hist
+    )
 
 @quiz_bp.route('/submit_guess_personalized', methods=['POST'])
 @require_login
@@ -224,85 +294,136 @@ def submit_guess_personalized():
         flash("Track not found. Returning to dashboard.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    start_time = session.pop('question_start_time', None)
-    time_taken = 0.0
-    if start_time is not None:
-        time_taken = time.time() - start_time
+    start_t = session.pop('question_start_time', None)
+    time_taken = time.time() - start_t if start_t else 0.0
 
-    challenge = session.get("challenge_type", "artist")
+    ctype = session.get("challenge_type", "artist")
     guess_str = request.form.get("guess", "").strip().lower()
     guess_correct = False
 
     def within_year_margin_adaptive(g, actual):
-        # Tighter margin for higher ELO
         if user.personalized_guess_elo > 1400:
             return (g == actual)
         else:
             return abs(g - actual) <= 2
 
-    if challenge == "artist":
+    # Evaluate correctness
+    if ctype == "artist":
         if guess_str == track["artist"].lower():
             guess_correct = True
-    elif challenge == "title":
+    elif ctype == "title":
         if guess_str == track["title"].lower():
             guess_correct = True
-    elif challenge == "year":
+    elif ctype == "year":
         if guess_str.isdigit():
-            guess_year = int(guess_str)
-            if within_year_margin_adaptive(guess_year, track["year"]):
+            gyear = int(guess_str)
+            if within_year_margin_adaptive(gyear, track["year"]):
                 guess_correct = True
 
     user.total_attempts += 1
     missed_list = user.get_missed_songs()
     lines = get_buddy_personality_lines()
 
+    # ELO
     outcome = 1.0 if guess_correct else 0.0
+    old_elo = user.personalized_guess_elo
     user.update_elo('personalized', 'guess', outcome)
+    new_elo = user.personalized_guess_elo
+    elo_diff = new_elo - old_elo
 
-    # Log attempt
+    # Log guess
     guess_log = GuessLog(
         user_id=user.id,
         track_id=track_id,
-        question_type=challenge,
+        question_type=ctype,
         is_correct=guess_correct,
         time_taken=time_taken,
         approach='personalized'
     )
     db.session.add(guess_log)
 
+    # Build feedback
     if guess_correct:
         user.total_correct += 1
-        feedback = f"Correct! {track['artist']} – {track['title']} ({track['year']})."
+        fb = f"Correct! {track['artist']} – {track['title']} ({track['year']})."
         if time_taken > 0:
-            feedback += f" You took {time_taken:.1f} seconds."
+            fb += f" You took {time_taken:.1f} seconds."
         if track_id in missed_list:
             missed_list.remove(track_id)
+
         if time_taken < 5:
             session["buddy_message"] = "Lightning speed! Impressive!"
         else:
             session["buddy_message"] = random.choice(lines['correct'])
         session.pop('buddy_hint', None)
     else:
-        feedback = f"Wrong! Correct: {track['artist']} – {track['title']} ({track['year']})."
+        fb = f"Wrong! Correct: {track['artist']} – {track['title']} ({track['year']})."
         if time_taken > 0:
-            feedback += f" Time taken: {time_taken:.1f} seconds."
+            fb += f" Time taken: {time_taken:.1f} seconds."
         if track_id not in missed_list:
             missed_list.append(track_id)
-        record_miss_for_type(challenge)
+        record_miss_for_type(ctype, time_taken)
         session["buddy_message"] = random.choice(lines['wrong'])
 
     user.set_missed_songs(missed_list)
     db.session.commit()
-    session["feedback"] = feedback
+
+    # Store feedback, elo_diff in session or pass it directly
+    session["feedback"] = fb
+    session["elo_diff"] = elo_diff
+
     return redirect(url_for('quiz_bp.personalized_feedback'))
 
+##################################################
+# Helper: Next Buddy Stage Threshold Calculation #
+##################################################
+def get_next_buddy_threshold(current_elo):
+    """
+    Returns the next threshold ELO and name of stage, or None if we're already at the highest stage.
+    """
+    stages = [
+        ("Bronze", 1100),
+        ("Silver", 1300),
+        ("Gold",   1500),
+        ("Diamond", float("inf"))  # no upper limit for Diamond
+    ]
+    for stage_name, threshold in stages:
+        if current_elo < threshold:
+            return threshold, stage_name
+    return None, None  # Already at max
 
 @quiz_bp.route('/personalized_feedback')
 @require_login
 def personalized_feedback():
     fb = session.get("feedback")
-    return render_template("personalized_version.html", song=None, feedback=fb, hints=[])
+    user = current_user()
+    diff = session.pop('elo_diff', 0)  # ELO difference
 
+    # Calculate how many points to next threshold
+    current_elo = user.personalized_guess_elo if user else 1000
+    next_threshold, next_stage_name = get_next_buddy_threshold(current_elo)
+    points_to_next = 0
+    if next_threshold and next_threshold != float('inf'):
+        points_to_next = next_threshold - current_elo
+
+    # Prepare side panel data again
+    top_missed = get_top_missed_artists(user, n=5)
+    elo_hist = get_elo_history(user, limit=6)
+    acc_hist = get_accuracy_history(user, limit=6)
+
+    return render_template(
+        "personalized_version.html",
+        song=None,
+        feedback=fb,
+        hints=[],
+        user=user,
+        elo_diff=diff,
+        points_to_next=points_to_next,
+        next_stage_name=next_stage_name,
+        top_missed_artists=top_missed,
+        elo_history=elo_hist,
+        acc_history=acc_hist
+    )
 
 #####################################
 #  Personalized Mistakes & Ranking  #
@@ -310,10 +431,6 @@ def personalized_feedback():
 @quiz_bp.route('/personalized_mistakes')
 @require_login
 def personalized_mistakes():
-    """
-    Shows a table of the user's missed songs, with an option
-    to do a new round focusing only on those missed items.
-    """
     user = current_user()
     missed_ids = user.get_missed_songs()
     if not missed_ids:
@@ -321,17 +438,12 @@ def personalized_mistakes():
         return redirect(url_for('quiz_bp.dashboard'))
 
     missed_tracks = [t for t in ALL_TRACKS if t['id'] in missed_ids]
-    # just sorted by year for neatness
     missed_tracks.sort(key=lambda x: x['year'])
     return render_template("personalized_mistakes.html", missed_tracks=missed_tracks)
-
 
 @quiz_bp.route('/rank_mistakes_only', methods=['POST'])
 @require_login
 def rank_mistakes_only():
-    """
-    Direct route to do a personalized ranking with only missed tracks.
-    """
     user = current_user()
     missed_ids = user.get_missed_songs()
     missed_tracks = [t for t in ALL_TRACKS if t['id'] in missed_ids]
@@ -342,53 +454,3 @@ def rank_mistakes_only():
     session['personalized_ranking_tracks'] = [x['id'] for x in missed_tracks]
     flash("Focusing on your missed songs. Good luck!", "info")
     return redirect(url_for('quiz_bp.personalized_rank_from_session'))
-
-
-"""
-================================================================================
-SAMPLE USER STUDY & SIGNIFICANCE TESTING OUTLINE (comments only)
---------------------------------------------------------------------------------
-1. Participants:
-   - Recruit >=12 participants (students, colleagues, random test users).
-   - They will try both versions: random and personalized.
-
-2. Tasks:
-   - Each participant does a set of guess tasks and ranking tasks in each version.
-   - We gather objective data: 
-     * Time to guess each track,
-     * Whether guess is correct,
-     * Final ranking accuracy (pairwise correctness),
-     * ELO changes, etc.
-
-3. Subjective Data:
-   - After each version, participants fill in:
-     * System Usability Scale (SUS) or standard usability form,
-     * Flow State Scale (how 'in the zone' they felt),
-     * Or Russell’s Circumplex model (arousal, valence).
-
-4. Metrics to Analyze:
-   - Objective: average time, accuracy, # of misses, ranking correctness fraction, etc.
-   - Subjective: SUS scores, Flow State scores, etc.
-   - Emotional data: e.g., self-reported or observed.
-
-5. Hypotheses:
-   - H0: "There is no difference in average guess time between random and personalized."
-   - H1: "Personalized approach yields a lower (faster) guess time on average."
-
-6. Statistical Test:
-   - For each user, compute their average guess time (random vs. personalized).
-   - Use a paired t-test:
-     * t, p = ...
-     * alpha=0.05
-   - If p < 0.05 => reject H0 => conclude personalized version is significantly faster.
-
-7. Similarly for ranking correctness or enjoyment rating:
-   - H0: "No difference in ranking correctness."
-   - H1: "Personalized approach yields higher correctness."
-   - Compare average correctness across all participants, use a Wilcoxon or t-test.
-
-8. Store Data & Materials:
-   - Put user logs (GuessLog DB), questionnaires, raw data in an appendix or shared drive.
-
-================================================================================
-"""
