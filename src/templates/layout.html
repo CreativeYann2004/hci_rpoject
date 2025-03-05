@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>{% block title %}Project Manual: Random vs Personalized UI{% endblock %}</title>
+  <title>{% block title %}Music Mystery{% endblock %}</title>
   <!-- Bootstrap 5 CSS -->
   <link
     rel="stylesheet"
@@ -17,7 +17,7 @@
   <nav class="navbar navbar-expand-lg {% if session.color_theme == 'light' %}navbar-light bg-light{% else %}navbar-dark bg-dark{% endif %}">
     <div class="container-fluid">
       <a class="navbar-brand" href="{{ url_for('quiz_bp.dashboard') }}">
-        HCI - Two UI Prototypes
+        HCI Project ---Music Mystery---
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarToggler">
         <span class="navbar-toggler-icon"></span>
@@ -73,7 +73,7 @@
   <!-- Footer -->
   <footer class="bg-secondary text-white mt-5 py-3">
     <div class="container text-center">
-      <small>HCI Project – Random UI vs Personalized UI</small>
+      <small>HCI Project</small>
     </div>
   </footer>
 

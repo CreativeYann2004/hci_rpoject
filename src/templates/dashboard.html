@@ -16,11 +16,11 @@
     <hr/>
     <button class="btn quiz-btn me-2"
             onclick="window.location='{{ url_for('quiz_bp.random_version') }}'">
-      Play <strong>Random Guess</strong>
+      Play <strong>Guessing 1</strong>
     </button>
     <button class="btn quiz-btn me-2"
             onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
-      Play <strong>Personalized Guess</strong>
+      Play <strong>Guessing 2</strong>
     </button>
     <button class="btn quiz-btn me-2"
             onclick="window.location='{{ url_for('quiz_bp.random_rank') }}'">
@@ -45,7 +45,6 @@
 
 {% if session.playlist_id %}
 <hr/>
-<h4>Listen to the Full Playlist (Spotify Embed)</h4>
 <iframe
   style="border-radius:12px"
   src="https://open.spotify.com/embed/playlist/{{ session.playlist_id }}"
@@ -57,7 +56,7 @@
 </iframe>
 {% else %}
 <p class="text-muted">
-  No full playlist embedded yet. Select or import a playlist above.
+  Choose a playlist to display it here.
 </p>
 {% endif %}
 {% endblock %}
