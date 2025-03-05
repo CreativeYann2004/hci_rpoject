@@ -1,5 +1,3 @@
-# models.py
-
 from app import db
 import json
 from datetime import datetime
@@ -24,7 +22,7 @@ class User(db.Model):
 
     def get_preferences(self):
         """
-        You might store user-specific preferences, e.g., favorite genres from Spotify's top artists.
+        For storing user-specific preferences, like 'favorite_genres' from Spotify top artists.
         """
         try:
             return json.loads(self.preferences_json)
@@ -87,6 +85,13 @@ class User(db.Model):
             new_elo = old_elo + K * (outcome - 0.5)
             self.personalized_rank_elo = round(new_elo)
 
+    def get_incorrect_count_for_track(self, track_id):
+        """
+        Utility method to return how many times the user has missed a specific track.
+        """
+        return sum(1 for gl in self.guess_logs
+                   if gl.track_id == track_id and not gl.is_correct)
+
 
 class GuessLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -97,6 +102,9 @@ class GuessLog(db.Model):
     time_taken = db.Column(db.Float, default=0.0)
     approach = db.Column(db.String(15))  # "random" or "personalized"
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # NEW: track if buddy hints were shown for this question
+    buddy_hints_shown = db.Column(db.Integer, default=0)
 
     # Relationship back to user
     user = db.relationship("User", backref="guess_logs")

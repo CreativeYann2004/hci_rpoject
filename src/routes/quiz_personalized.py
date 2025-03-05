@@ -19,19 +19,26 @@ from routes.quiz_base import (
 def get_decade(year):
     return (year // 10) * 10
 
-def time_decay_weight(guess_timestamp):
+def time_decay_weight(guess_timestamp, times_missed=1):
     """
     Exponential decay based on how many days ago the guess happened.
-    e.g., each additional week halves the impact.
+    Each additional week halves the impact.
+    
+    Adds a small 'spaced repetition' factor for repeated misses:
+      weight *= (1 + 0.1 * (times_missed - 1)).
     """
     now = datetime.utcnow()
     diff_days = (now - guess_timestamp).days
-    return 0.5 ** (diff_days / 7.0)
+    base_weight = 0.5 ** (diff_days / 7.0)
+
+    # Spaced repetition factor: track repeated misses
+    spaced_factor = 1.0 + 0.1 * (times_missed - 1)
+    return base_weight * spaced_factor
 
 def build_personalization_scores(user):
     """
     Examine the user's guess logs to see which artists, decades, or tracks
-    gave them trouble. Weighted by recency, plus user’s favorite_genres if any.
+    gave them trouble. Weighted by recency + repeated misses + user’s favorite_genres if any.
     """
     artist_scores = {}
     decade_scores = {}
@@ -43,7 +50,10 @@ def build_personalization_scores(user):
 
     for log in user.guess_logs:
         if not log.is_correct:
-            w = time_decay_weight(log.timestamp)
+            # How many times the user missed THIS track so far?
+            times_missed_for_that_track = user.get_incorrect_count_for_track(log.track_id)
+
+            w = time_decay_weight(log.timestamp, times_missed_for_that_track)
             track = next((t for t in ALL_TRACKS if t['id'] == log.track_id), None)
             if track:
                 a = track['artist'].lower()
@@ -54,6 +64,7 @@ def build_personalization_scores(user):
 
                 # If track has genre_list, weigh these
                 for g in track.get("genre_list", []):
+                    # 2x weighting if the user labeled that genre as a "favorite"
                     multiplier = 2.0 if g in fav_genres else 1.0
                     genre_scores[g] = genre_scores.get(g, 0) + w * multiplier
 
@@ -95,17 +106,21 @@ def pick_personalized_track(user):
     if not candidates:
         return random.choice(ALL_TRACKS)
 
-    # Weighted random
+    # Weighted random among candidates
     weighted_candidates = []
+    # Rebuild the personalization scores once (to not re-run build inside loop)
+    artist_scores_, decade_scores_, track_scores_, genre_scores_ = build_personalization_scores(user)
+    
     for t in candidates:
         a = t['artist'].lower()
         d = get_decade(t['year'])
         tid = t['id']
-        # sum up the scores
-        artist_scores_, decade_scores_, track_scores_, genre_scores_ = build_personalization_scores(user)
-        w = artist_scores_.get(a, 0) + decade_scores_.get(d, 0) + track_scores_.get(tid, 0)
+        w = (artist_scores_.get(a, 0)
+             + decade_scores_.get(d, 0)
+             + track_scores_.get(tid, 0))
         for g in t.get('genre_list', []):
             w += genre_scores_.get(g, 0)
+
         if w < 0.1:
             w = 0.1
         weighted_candidates.append((t, w))
@@ -132,26 +147,51 @@ def get_user_type_stats(user):
 def record_miss_for_type(qtype, time_taken=0.0):
     type_misses, quick_misses = get_user_type_stats(current_user())
     type_misses[qtype] += 1
+    # if user misses in under 5s, count it as a "quick" guess (maybe typed randomly)
     if time_taken < 5.0:
         quick_misses[qtype] += 1
     session['type_misses'] = type_misses
     session['quick_misses'] = quick_misses
 
 def pick_question_type_adaptive(user):
+    """
+    Adaptive logic: 
+      - Base weighting uses how many times user missed each question type.
+      - Ensures "year" has at least a 20% chance overall 
+        (so it doesn't get overshadowed by artist/title misses).
+    """
     type_misses, quick_misses = get_user_type_stats(user)
     qtypes = ["artist", "title", "year"]
+
+    # Build base weights
     weights = {}
     for qt in qtypes:
-        w = 1 + type_misses[qt] + 0.5 * quick_misses[qt]
+        base_val = 1.0  # always start with 1 so each type has a chance
+        w = base_val + type_misses[qt] + 0.5 * quick_misses[qt]
+        # If you want to slightly boost year in general, you could do:
+        # if qt == 'year':
+        #     w += 0.3
         weights[qt] = w
+
     total_w = sum(weights.values())
+    # Enforce: year should be at least 20% chance
+    current_year_frac = weights['year'] / total_w
+    desired_min_frac = 0.2  # 20%
+    if current_year_frac < desired_min_frac:
+        # Increase the weight of 'year' so it meets 20% threshold
+        shortfall = (desired_min_frac * total_w) - weights['year']
+        weights['year'] += shortfall
+        # recalc total_w
+        total_w = sum(weights.values())
+
+    # Weighted random pick
     r = random.uniform(0, total_w)
     cumul = 0
     for qt in qtypes:
         cumul += weights[qt]
         if r <= cumul:
             return qt
-    return random.choice(qtypes)
+    return random.choice(qtypes)  # fallback
 
 ############################
 # HELPER for stats panel
@@ -161,60 +201,43 @@ def get_top_missed_artists(user, n=5):
     Return a list of (artist_name, score) for the top N missed artists.
     """
     artist_scores, _, _, _ = build_personalization_scores(user)
-    # Sort by highest score
     sorted_artists = sorted(artist_scores.items(), key=lambda x: x[1], reverse=True)
-    # Convert back from lowercase to original-case if needed:
-    # but we only have the lowercase keys. We'll keep them as is or capitalize them
     return sorted_artists[:n]
 
 def get_elo_history(user, limit=5):
     """
-    Return a small list of (label, value) for the user’s last <limit> personalized guess logs,
-    capturing ELO after each guess.
+    Return a small list of (label, value) for the user’s last <limit> 
+    personalized guess logs, capturing ELO after each guess (approx).
     """
-    # Grab the user’s guess_logs for approach='personalized'
-    # Sort by timestamp ascending
     relevant = [gl for gl in user.guess_logs if gl.approach=='personalized']
     relevant.sort(key=lambda x: x.timestamp)
-    # For each guess, record (short_date, ELO) after that guess
-    # We’ll incrementally recalc or store the ELO in real-time
-    # For simplicity, we’ll just store user.personalized_guess_elo at that time
-    # but we only have final ELO. We'll just approximate or do a rolling approach:
     logs = []
     temp_elo = 1200
     for g in relevant:
-        # outcome
         outcome = 1.0 if g.is_correct else 0.0
         old_elo = temp_elo
         new_elo = old_elo + 32*(outcome - 0.5)
         temp_elo = round(new_elo)
         label_date = g.timestamp.strftime('%m/%d')
         logs.append({"label": label_date, "value": temp_elo})
-
-    # Just return the last <limit>
     return logs[-limit:]
 
 def get_accuracy_history(user, limit=5):
     """
-    Return a list of floating values (0..1) representing moving accuracy over time,
-    for the user’s last N guesses in personalized approach.
+    Return a list of 0..1 accuracy for the user’s last N personalized guesses, cumulatively.
     """
     relevant = [gl for gl in user.guess_logs if gl.approach=='personalized']
     relevant.sort(key=lambda x: x.timestamp)
     if not relevant:
         return []
-
-    # We'll do a sliding window accuracy. For each guess in chronological order,
-    # compute accuracy up to that point.
-    results = []
     correct_count = 0
     total_so_far = 0
+    results = []
     for g in relevant:
         total_so_far += 1
         if g.is_correct:
             correct_count += 1
         results.append(correct_count / total_so_far)
-
     return results[-limit:]
 
 ############################
@@ -301,11 +324,15 @@ def submit_guess_personalized():
     guess_str = request.form.get("guess", "").strip().lower()
     guess_correct = False
 
-    def within_year_margin_adaptive(g, actual):
-        if user.personalized_guess_elo > 1400:
-            return (g == actual)
+    # More dynamic margin for year based on ELO
+    def within_year_margin_adaptive(g, actual, elo):
+        if elo < 1100:
+            margin = 3
+        elif elo < 1400:
+            margin = 2
         else:
-            return abs(g - actual) <= 2
+            margin = 0  # must match exactly
+        return abs(g - actual) <= margin
 
     # Evaluate correctness
     if ctype == "artist":
@@ -317,7 +344,7 @@ def submit_guess_personalized():
     elif ctype == "year":
         if guess_str.isdigit():
             gyear = int(guess_str)
-            if within_year_margin_adaptive(gyear, track["year"]):
+            if within_year_margin_adaptive(gyear, track["year"], user.personalized_guess_elo):
                 guess_correct = True
 
     user.total_attempts += 1
@@ -331,6 +358,9 @@ def submit_guess_personalized():
     new_elo = user.personalized_guess_elo
     elo_diff = new_elo - old_elo
 
+    # Track whether a buddy hint was shown
+    buddy_hints_shown = 1 if 'buddy_hint' in session else 0
+
     # Log guess
     guess_log = GuessLog(
         user_id=user.id,
@@ -338,7 +368,8 @@ def submit_guess_personalized():
         question_type=ctype,
         is_correct=guess_correct,
         time_taken=time_taken,
-        approach='personalized'
+        approach='personalized',
+        buddy_hints_shown=buddy_hints_shown
     )
     db.session.add(guess_log)
 
@@ -368,7 +399,7 @@ def submit_guess_personalized():
     user.set_missed_songs(missed_list)
     db.session.commit()
 
-    # Store feedback, elo_diff in session or pass it directly
+    # Store feedback, elo_diff
     session["feedback"] = fb
     session["elo_diff"] = elo_diff
 
@@ -379,13 +410,13 @@ def submit_guess_personalized():
 ##################################################
 def get_next_buddy_threshold(current_elo):
     """
-    Returns the next threshold ELO and name of stage, or None if we're already at the highest stage.
+    Returns the next threshold ELO and name of stage, or None if at highest stage.
     """
     stages = [
         ("Bronze", 1100),
         ("Silver", 1300),
         ("Gold",   1500),
-        ("Diamond", float("inf"))  # no upper limit for Diamond
+        ("Diamond", float("inf")) 
     ]
     for stage_name, threshold in stages:
         if current_elo < threshold:
@@ -397,7 +428,7 @@ def get_next_buddy_threshold(current_elo):
 def personalized_feedback():
     fb = session.get("feedback")
     user = current_user()
-    diff = session.pop('elo_diff', 0)  # ELO difference
+    diff = session.pop('elo_diff', 0)
 
     # Calculate how many points to next threshold
     current_elo = user.personalized_guess_elo if user else 1000
