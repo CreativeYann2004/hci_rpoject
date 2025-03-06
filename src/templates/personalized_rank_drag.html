@@ -8,6 +8,10 @@
     Drag each song from the bottom row into the rank boxes above.
   </p>
 
+  <div class="elo-display">
+    <p>ELO: {{ elo }}</p>
+  </div>
+
   <form method="POST" action="{{ url_for('quiz_bp.submit_personalized_rank') }}">
     <input type="hidden" id="drag_order" name="drag_order" />
 
@@ -62,6 +66,19 @@
     </button>
   </form>
 </div>
+
+<style>
+  .elo-display {
+    position: absolute;
+    top: 65px; /* Adjust this value to lower the ELO display */
+    right: 10px;
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    font-size: 22px;
+  }
+</style>
 
 <script>
 let draggedItem = null;

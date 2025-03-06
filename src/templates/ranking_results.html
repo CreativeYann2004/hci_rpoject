@@ -1,87 +1,101 @@
 {# templates/ranking_results.html #}
-{% extends "layout.html" %}
-{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% extends "layout.html" %}
+</head>
+<body>
+    {% block content %}
 
-<h2>Ranking Results</h2>
+    <h1>Ranking Results</h1>
 
-<!-- Basic summary of approach, correctness, etc. -->
-<p>
-  Approach: <strong>{{ approach|title }}</strong><br/>
-  You were ranking by: <strong>{{ ranking_mode == 'popularity' and 'Popularity' or 'Year' }}</strong><br/>
-  Pairwise Accuracy: {{ (correctness * 100)|round(1) }}%<br/>
-  Difficulty rating: {{ difficulty }}<br/>
-  Combined Outcome: {{ outcome|round(2) }}
-</p>
+    <!-- Basic summary of approach, correctness, etc. -->
+    <p>
+        Approach: <strong>{{ results.approach|title }}</strong><br/>
+        You were ranking by: <strong>{{ results.get('ranking_mode', 'popularity') == 'popularity' and 'Popularity' or 'Year' }}</strong><br/>
+        Pairwise Accuracy: {{ (results.correctness_fraction * 100)|round(1) }}%<br/>
+        Difficulty rating: {{ results.difficulty }}<br/>
+        Combined Outcome: {{ results.outcome|round(2) }}
+    </p>
 
-<table class="table table-bordered">
-  <thead>
-    <tr>
-      <th class="text-center"># (Yours)</th>
-      <th class="text-center">Your Track</th>
-      <th class="text-center">Year</th>
-      <th class="text-center">Popularity</th>
-      <th class="text-center"># (Correct)</th>
-      <th class="text-center">Correct Track</th>
-      <th class="text-center">Year</th>
-      <th class="text-center">Popularity</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for pair in combined %}
-      {% set final_track = pair[0] %}
-      {% set correct_track = pair[1] %}
-      {# We'll highlight a row if the track IDs differ (i.e. mismatch). #}
-      <tr {% if final_track and correct_track and final_track.id != correct_track.id %}style="background:#ffe0e0;"{% endif %}>
-        <!-- Y Our rank index -->
-        <td class="text-center">{{ loop.index }}</td>
-        <td>
-          {% if final_track %}
-            <strong>{{ final_track.artist }}</strong> – {{ final_track.title }}
-          {% else %}
-            <em>None</em>
-          {% endif %}
-        </td>
-        <td>
-          {% if final_track %}{{ final_track.year }}{% endif %}
-        </td>
-        <td>
-          {% if final_track %}{{ final_track.popularity }}{% endif %}
-        </td>
+    {% if results.approach == 'personalized' %}
+    <div class="elo-display">
+        <p>Your new ELO: {{ new_elo }}</p>
+        <p>ELO change: {% if elo_change > 0 %}+{% endif %}{{ elo_change }}</p>
+    </div>
+    {% endif %}
 
-        <!-- Correct rank index -->
-        <td class="text-center">{{ loop.index }}</td>
-        <td>
-          {% if correct_track %}
-            <strong>{{ correct_track.artist }}</strong> – {{ correct_track.title }}
-          {% else %}
-            <em>None</em>
-          {% endif %}
-        </td>
-        <td>
-          {% if correct_track %}{{ correct_track.year }}{% endif %}
-        </td>
-        <td>
-          {% if correct_track %}{{ correct_track.popularity }}{% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th class="text-center"># (Yours)</th>
+          <th class="text-center">Your Track</th>
+          <th class="text-center">Year</th>
+          <th class="text-center">Popularity</th>
+          <th class="text-center"># (Correct)</th>
+          <th class="text-center">Correct Track</th>
+          <th class="text-center">Year</th>
+          <th class="text-center">Popularity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pair in combined %}
+          {% set final_track = pair[0] %}
+          {% set correct_track = pair[1] %}
+          {# We'll highlight a row if the track IDs differ (i.e. mismatch). #}
+          <tr {% if final_track and correct_track and final_track.id != correct_track.id %}style="background:#ffe0e0;"{% endif %}>
+            <!-- Y Our rank index -->
+            <td class="text-center">{{ loop.index }}</td>
+            <td>
+              {% if final_track %}
+                <strong>{{ final_track.artist }}</strong> – {{ final_track.title }}
+              {% else %}
+                <em>None</em>
+              {% endif %}
+            </td>
+            <td>
+              {% if final_track %}{{ final_track.year }}{% endif %}
+            </td>
+            <td>
+              {% if final_track %}{{ final_track.popularity }}{% endif %}
+            </td>
 
-<!-- Buttons to start another round -->
-<div class="mt-3">
-  {% if approach == 'personalized' %}
-    <button class="btn btn-primary" onclick="window.location='{{ url_for('quiz_bp.personalized_rank') }}'">
-      Start Another Personalized Round
-    </button>
-    <button class="btn btn-secondary" onclick="window.location='{{ url_for('quiz_bp.personalized_mistakes') }}'">
-      Review Missed Songs
-    </button>
-  {% else %}
-    <button class="btn btn-primary" onclick="window.location='{{ url_for('quiz_bp.random_rank') }}'">
-      Start Another Random Round
-    </button>
-  {% endif %}
-</div>
+            <!-- Correct rank index -->
+            <td class="text-center">{{ loop.index }}</td>
+            <td>
+              {% if correct_track %}
+                <strong>{{ correct_track.artist }}</strong> – {{ correct_track.title }}
+              {% else %}
+                <em>None</em>
+              {% endif %}
+            </td>
+            <td>
+              {% if correct_track %}{{ correct_track.year }}{% endif %}
+            </td>
+            <td>
+              {% if correct_track %}{{ correct_track.popularity }}{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
 
-{% endblock %}
+    <!-- Buttons to start another round -->
+    <div class="mt-3">
+      {% if approach == 'personalized' %}
+        <button class="btn btn-primary" onclick="window.location='{{ url_for('quiz_bp.personalized_rank') }}'">
+          Start Another Personalized Round
+        </button>
+        <button class="btn btn-secondary" onclick="window.location='{{ url_for('quiz_bp.personalized_mistakes') }}'">
+          Review Missed Songs
+        </button>
+      {% else %}
+        <button class="btn btn-primary" onclick="window.location='{{ url_for('quiz_bp.random_rank') }}'">
+          Start Another Random Round
+        </button>
+      {% endif %}
+    </div>
+
+    {% endblock %}
+</body>
+</html>

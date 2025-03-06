@@ -64,26 +64,29 @@ class User(db.Model):
         mode='guess' or 'rank'
         outcome=1.0 for success, 0.0 for failure, or any 0..1 fraction
         """
-        K = 32
+        K = 32  # Example K-factor
+        MIN_ELO = 800  # Minimum ELO value
+        MAX_ELO = 2400  # Maximum ELO value
+
         if approach == 'random' and mode == 'guess':
             old_elo = self.random_guess_elo
             new_elo = old_elo + K * (outcome - 0.5)
-            self.random_guess_elo = round(new_elo)
+            self.random_guess_elo = round(max(MIN_ELO, min(MAX_ELO, new_elo)))
 
         elif approach == 'personalized' and mode == 'guess':
             old_elo = self.personalized_guess_elo
             new_elo = old_elo + K * (outcome - 0.5)
-            self.personalized_guess_elo = round(new_elo)
+            self.personalized_guess_elo = round(max(MIN_ELO, min(MAX_ELO, new_elo)))
 
         elif approach == 'random' and mode == 'rank':
             old_elo = self.random_rank_elo
             new_elo = old_elo + K * (outcome - 0.5)
-            self.random_rank_elo = round(new_elo)
+            self.random_rank_elo = round(max(MIN_ELO, min(MAX_ELO, new_elo)))
 
         elif approach == 'personalized' and mode == 'rank':
             old_elo = self.personalized_rank_elo
             new_elo = old_elo + K * (outcome - 0.5)
-            self.personalized_rank_elo = round(new_elo)
+            self.personalized_rank_elo = round(max(MIN_ELO, min(MAX_ELO, new_elo)))
 
     def get_incorrect_count_for_track(self, track_id):
         """
