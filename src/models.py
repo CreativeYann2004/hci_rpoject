@@ -1,4 +1,5 @@
 # models.py
+
 from app import db
 import json
 from datetime import datetime
@@ -12,11 +13,26 @@ class User(db.Model):
     total_attempts = db.Column(db.Integer, default=0)
     missed_songs = db.Column(db.String(1000), default="[]")
 
-    # ----- ELO RATINGS (hidden from UI, but internally stored) -----
+    # ELO RATINGS
     random_guess_elo = db.Column(db.Integer, default=1200)
     personalized_guess_elo = db.Column(db.Integer, default=1200)
     random_rank_elo = db.Column(db.Integer, default=1200)
     personalized_rank_elo = db.Column(db.Integer, default=1200)
+
+    # For demonstration, store user preferences in JSON (e.g., top-genre).
+    preferences_json = db.Column(db.Text, default="{}")
+
+    def get_preferences(self):
+        """
+        You might store user-specific preferences, e.g., favorite genres from Spotify's top artists.
+        """
+        try:
+            return json.loads(self.preferences_json)
+        except:
+            return {}
+
+    def set_preferences(self, prefs):
+        self.preferences_json = json.dumps(prefs)
 
     def get_missed_songs(self):
         try:
@@ -34,8 +50,7 @@ class User(db.Model):
 
     def get_level(self):
         """
-        Dynamically determine user level based on accuracy alone.
-        Could also incorporate ELO if desired.
+        Example classification based on accuracy:
         """
         acc = self.get_accuracy()
         if acc < 0.3:
@@ -45,14 +60,11 @@ class User(db.Model):
         else:
             return "advanced"
 
-    # --- ELO Updating (kept invisible in UI) ---
     def update_elo(self, approach, mode, outcome):
         """
         approach='random' or 'personalized'
         mode='guess' or 'rank'
         outcome=1.0 for success, 0.0 for failure, or any 0..1 fraction
-
-        Minimal example ELO update. Real logic might incorporate expected scores.
         """
         K = 32  # Example K-factor
         MIN_ELO = 800  # Minimum ELO value
@@ -79,16 +91,15 @@ class User(db.Model):
             self.personalized_rank_elo = round(max(MIN_ELO, min(MAX_ELO, new_elo)))
 
 
-# NEW: Store each guess attempt (for your user study data)
 class GuessLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     track_id = db.Column(db.String(80), nullable=False)
-    question_type = db.Column(db.String(10))  # "artist", "title", "year"
+    question_type = db.Column(db.String(10))  # "artist", "title", or "year"
     is_correct = db.Column(db.Boolean, default=False)
     time_taken = db.Column(db.Float, default=0.0)
     approach = db.Column(db.String(15))  # "random" or "personalized"
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship back to the user if you want:
+    # Relationship back to user
     user = db.relationship("User", backref="guess_logs")

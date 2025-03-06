@@ -1,4 +1,3 @@
-# routes/quiz_base.py
 import re
 import random
 import time
@@ -45,6 +44,7 @@ def parse_spotify_playlist_input(user_input):
     if not user_input:
         return ""
     user_input = user_input.strip()
+    # Look for either Spotify playlist link or URN
     match = re.search(r'(?:spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)', user_input)
     if match:
         return match.group(1)
@@ -175,7 +175,6 @@ def generate_hints(track, question_type, user, is_personalized=False):
     """
     hints = []
 
-    # Possibly adapt how many hints we show if the user is advanced vs struggling
     user_elo = user.personalized_guess_elo if is_personalized else user.random_guess_elo
 
     # Example logic: advanced => fewer hints
@@ -186,7 +185,6 @@ def generate_hints(track, question_type, user, is_personalized=False):
         max_hints = 3  # allow full hints
 
     if question_type == 'artist':
-        # first letter
         first_letter = track['artist'][0]
         hints.append(f"The artist starts with '{first_letter}'.")
         if is_personalized and max_hints > 1:
@@ -208,10 +206,8 @@ def generate_hints(track, question_type, user, is_personalized=False):
             else:
                 hints.append("It's in the 20th century or earlier.")
 
-    # If the user missed it multiple times, we can add an extra nudge
     times_missed = user.get_missed_songs().count(track["id"])
     if times_missed >= 2 and is_personalized and max_hints > 1:
         hints.append("Remember, we've seen this track a few times already. Focus!")
 
-    # Limit number of hints to max_hints
     return hints[:max_hints]

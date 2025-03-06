@@ -1,4 +1,3 @@
-# routes/auth.py
 import requests
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -22,7 +21,8 @@ SPOTIFY_SCOPES = (
     "playlist-read-collaborative "
     "playlist-modify-public "
     "playlist-modify-private "
-    "user-read-recently-played"
+    "user-read-recently-played "
+    "user-top-read"  # <--- needed if you want to fetch user’s top artists/genres
 )
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -90,7 +90,7 @@ def login():
 def logout():
     session.pop('user_id', None)
     session.pop('spotify_token', None)
-    session.pop('buddy_hint', None)  # Clear buddy hint too
+    session.pop('buddy_hint', None)
     flash("Logged out!", "info")
     return redirect(url_for('auth_bp.login'))
 
@@ -146,4 +146,25 @@ def spotify_callback():
 
     session["spotify_token"] = access_token
     flash("Spotify connected! You can now import your playlists or view recent tracks.", "success")
+
+    # Optional: fetch user's top artists/genres and store in preferences
+    user_obj = current_user()
+    try:
+        sp = spotipy.Spotify(auth=access_token)
+        top_artists_data = sp.current_user_top_artists(limit=20, time_range='medium_term')
+        top_artists = top_artists_data.get('items', [])
+        favorite_genres = {}
+        for artist in top_artists:
+            for g in artist.get('genres', []):
+                favorite_genres[g] = favorite_genres.get(g, 0) + 1
+
+        sorted_genres = sorted(favorite_genres.keys(), key=lambda g: favorite_genres[g], reverse=True)
+        user_prefs = user_obj.get_preferences()
+        user_prefs['favorite_genres'] = sorted_genres[:5]  # store top 5
+        user_obj.set_preferences(user_prefs)
+        db.session.commit()
+    except Exception as e:
+        # If it fails, just ignore
+        print("Could not fetch user top artists:", e)
+
     return redirect(url_for('quiz_bp.dashboard'))

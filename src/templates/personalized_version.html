@@ -1,267 +1,514 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-8">
-    <div class="card p-4 shadow-lg" 
-         style="background: linear-gradient(135deg, #ffffff 0%, #f7f9fc 100%); border:none;">
+<style>
+/* Page background for a more pleasing look */
+body {
+  background: linear-gradient(45deg, #eef2f7, #ffffff);
+  margin: 0;
+  padding: 0;
+}
 
-      <h2 class="mb-4 text-center" style="font-weight:600; color:#444;">
-        Adaptive Personalized UI
-      </h2>
+/* Hide the default buddy from layout. */
+#buddyInLayout {
+  display: none !important;
+}
 
-      {% if feedback %}
-        <!-- Feedback Section (Displayed AFTER user submits a guess) -->
-        <div class="card mb-4 p-3 shadow-sm"
-             style="border-left: 5px solid {% if feedback.startswith('Correct!') %}#4CAF50{% else %}#F44336{% endif %};
-                    background-color: #fefefe;">
-          <h4 class="mb-2">
-            {% if feedback.startswith('Correct!') %}
-              🎉 Nice Work!
+/* Container to center the main content */
+.centered-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Feedback Card Animation */
+.result-card {
+  animation: fadeIn 0.4s ease-in-out;
+  border-radius: 6px;
+}
+
+@keyframes fadeIn {
+  from {opacity: 0; transform: translateY(5px);}
+  to   {opacity: 1; transform: translateY(0);}
+}
+
+/* Make the main quiz card a bit more visually pleasing */
+.card.p-4.shadow-lg {
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafc 100%);
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+}
+</style>
+
+<div class="centered-container">
+  <div class="row">
+    <!-- MAIN COLUMN: quiz area + feedback card -->
+    <div class="col-md-8 mx-auto">
+      <div class="card p-4 shadow-lg">
+        <h2 class="mb-4 text-center" style="font-weight:600; color:#444;">
+          GUESS THE SONG DETAILS
+        </h2>
+
+        {% if feedback %}
+          {% set is_correct = feedback.startswith('Correct!') %}
+          {% set card_bg = '#fff2f2' if not is_correct else '#f2fffa' %}
+          {% set border_col = '#F44336' if not is_correct else '#4CAF50' %}
+          {% set heading_txt = 'Not Quite' if not is_correct else 'Great Job!' %}
+          {% set icon_emoji = '❌' if not is_correct else '✅' %}
+
+          <!-- FEEDBACK CARD -->
+          <div class="card mb-4 p-3 shadow-sm result-card"
+               style="border-left: 6px solid {{ border_col }};
+                      background: {{ card_bg }};
+                      border-radius: 6px;">
+            <h4 class="mb-2" style="font-weight:600; color:{{ border_col }};">
+              {{ icon_emoji }} {{ heading_txt }}
+            </h4>
+            <p style="margin-bottom:0.5rem;">{{ feedback }}</p>
+
+            {% if is_correct %}
+              <p class="fw-bold" style="color:#2F6F31; margin-bottom:0.5rem;">
+                You’re really improving!
+              </p>
             {% else %}
-              ❌ Not Quite
-            {% endif %}
-          </h4>
-          <p style="margin-bottom:0.5rem;">{{ feedback }}</p>
-
-          {% if feedback.startswith('Correct!') %}
-            <p style="color:#2F6F31;">You’re really improving!</p>
-          {% else %}
-            <p style="color:#AA3333;">No worries, keep practicing!</p>
-          {% endif %}
-
-          <div class="mt-3 text-center">
-            <button class="btn btn-primary"
-                    onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
-              Try Another
-            </button>
-          </div>
-        </div>
-
-        <!-- Confetti if correct -->
-        {% if feedback.startswith('Correct!') %}
-          <canvas id="confettiCanvas" 
-                  class="w-100" 
-                  style="height:100%; position:fixed; top:0; left:0; pointer-events:none;">
-          </canvas>
-        {% endif %}
-
-      {% else %}
-        <!-- Guessing Section (Displayed BEFORE user submits a guess) -->
-        {% if song %}
-          <!-- Minimal snippet embed -->
-          <div class="mx-auto mb-3 snippet-container"
-               style="width:50px; height:50px; position:relative; overflow:hidden; 
-                      border:2px solid #ccc; border-radius:6px; transition: transform 0.2s;">
-            <iframe
-              src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
-              width="600"
-              height="600"
-              frameborder="0"
-              style="position:absolute; top:-265px; left:-513px;"
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
-            </iframe>
-          </div>
-          <p class="text-muted text-center" style="font-size:0.9rem;">
-            Press play to hear a snippet. Then guess below!
-          </p>
-
-          <hr style="margin:1.5rem 0;" />
-
-          <form method="POST" action="{{ url_for('quiz_bp.submit_guess_personalized') }}">
-
-            <!-- If there's a buddy hint, show it in a small alert style -->
-            {% if buddy_hint %}
-            <div class="alert alert-secondary mb-3">
-              Hint: {{ buddy_hint }}
-            </div>
+              <p class="fw-bold" style="color:#AA3333; margin-bottom:0.5rem;">
+                No worries, keep practicing!
+              </p>
             {% endif %}
 
-            {% set ctype = session.challenge_type %}
-            {% if ctype == 'artist' %}
-              <label class="fw-bold mb-1">Guess the Artist:</label>
-              <!-- Autocomplete container -->
-              <div class="position-relative mb-3">
-                <input 
-                  type="text" 
-                  name="guess" 
-                  id="guess" 
-                  class="form-control" 
-                  placeholder="Type artist name..."
-                  required
-                  autocomplete="off"
-                >
-                <div id="guess-autocomplete-list" class="autocomplete-items"></div>
+            <!-- ELO Section -->
+            {% set current_elo = user.personalized_guess_elo if user else 1200 %}
+            {% set diff = elo_diff if elo_diff else 0 %}
+            {% set sign = '+' if diff>0 else '' %}
+            {% set diff_str = sign ~ diff %}
+            <div class="p-2"
+                 style="background:#fff; border:1px solid #ddd; border-radius:4px;">
+              <h5 style="margin-bottom:0.3rem;">Your Rank</h5>
+              <p style="margin-bottom:0.3rem; font-weight:600;">
+                {{ current_elo }}
+                <span style="color:{% if diff>0 %}green{% elif diff<0 %}red{% else %}#555{% endif %};
+                             margin-left:6px;">
+                  ({{ diff_str if diff!=0 else '±0' }})
+                </span>
+              </p>
+
+              <!-- ELO progress bar -->
+              {% set max_elo = 2000 %}
+              {% set elo_percent = (current_elo / max_elo) * 100 %}
+              {% if elo_percent > 100 %}
+                {% set elo_percent = 100 %}
+              {% endif %}
+              <div class="progress" style="height:20px;">
+                <div class="progress-bar bg-info"
+                     role="progressbar"
+                     style="width: {{ elo_percent|round(0) }}%;"
+                     aria-valuenow="{{ elo_percent|round(0) }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                  {{ elo_percent|round(1) }}%
+                </div>
               </div>
+              <small class="text-muted">
+                Rank up! Buddy levels up with correct guesses.🤖
+              </small>
+            </div>
 
-            {% elif ctype == 'title' %}
-              <label class="fw-bold mb-1">Guess the Title:</label>
-              <input 
-                type="text" 
-                name="guess" 
-                class="form-control mb-3" 
-                placeholder="Song title..." 
-                required
-                autocomplete="off"
-              >
-
-            {% else %}
-              <label class="fw-bold mb-1">Guess the Release Year:</label>
-              <input 
-                type="text" 
-                name="guess" 
-                class="form-control mb-3" 
-                placeholder="e.g. 1999" 
-                required
-                autocomplete="off"
-              >
+            <!-- POINTS-TO-NEXT TIER -->
+            {% if next_stage_name and points_to_next > 0 %}
+              <p class="mt-3" style="font-weight: 500; color: #444;">
+                You’re <strong>{{ points_to_next|round(0) }} points</strong> away from 
+                the next buddy upgrade. Your current upgrade is: <strong>{{ next_stage_name }}</strong>!
+              </p>
+            {% elif next_stage_name == 'Diamond' %}
+              <p class="mt-3" style="font-weight: 500; color: #444;">
+                You’re at the highest tier: Diamond! Congrats!
+              </p>
             {% endif %}
 
-            <button class="btn btn-success px-4 py-2" style="font-weight:500;">
-              Submit Guess
-            </button>
-          </form>
-
+            <div class="mt-3 text-center">
+              <button class="btn btn-primary"
+                      onclick="window.location='{{ url_for('quiz_bp.personalized_version') }}'">
+                Try Another
+              </button>
+            </div>
+          </div>
         {% else %}
-          <p><em>No track selected. Try again!</em></p>
+          <!-- BEFORE GUESS: snippet & guess form -->
+          {% if song %}
+            <div class="mx-auto mb-3 snippet-container"
+                 style="width:50px; height:50px; position:relative; overflow:hidden;
+                        border:2px solid #ccc; border-radius:6px;">
+              <iframe
+                src="https://open.spotify.com/embed/track/{{ song.id }}?theme=0&view=coverart"
+                width="600"
+                height="600"
+                frameborder="0"
+                style="position:absolute; top:-265px; left:-513px;"
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
+              </iframe>
+            </div>
+            <p class="text-muted text-center" style="font-size:0.9rem;">
+              Press play to hear a snippet. Then guess below!
+            </p>
+            <hr style="margin:1.5rem 0;" />
+
+            <form method="POST" action="{{ url_for('quiz_bp.submit_guess_personalized') }}">
+              {% set ctype = session.challenge_type %}
+              {% if ctype == 'artist' %}
+                <label class="fw-bold mb-1">Guess the Artist:</label>
+                <div class="position-relative mb-3">
+                  <input type="text"
+                         name="guess"
+                         id="guess"
+                         class="form-control"
+                         placeholder="Type artist name..."
+                         required
+                         autocomplete="off">
+                  <div id="guess-autocomplete-list" class="autocomplete-items"></div>
+                </div>
+              {% elif ctype == 'title' %}
+                <label class="fw-bold mb-1">Guess the Title:</label>
+                <div class="position-relative mb-3">
+                  <input type="text"
+                         name="guess"
+                         id="guessTitle"
+                         class="form-control"
+                         placeholder="Song title..."
+                         required
+                         autocomplete="off">
+                  <div id="guessTitle-autocomplete-list" class="autocomplete-items"></div>
+                </div>
+              {% else %}
+                <label class="fw-bold mb-1">Guess the Release Year:</label>
+                <input type="text"
+                       name="guess"
+                       class="form-control mb-3"
+                       placeholder="e.g. 1999"
+                       required
+                       autocomplete="off">
+              {% endif %}
+
+              <button class="btn btn-success px-4 py-2" style="font-weight:500;">
+                Submit
+              </button>
+            </form>
+          {% else %}
+            <p><em>No track selected. Try again!</em></p>
+          {% endif %}
         {% endif %}
-      {% endif %}
+      </div>
     </div>
+
+    {% if feedback %}
+    <!-- Only show the TOP MISSED ARTISTS after a guess -->
+    <div class="col-md-4 mt-3">
+      <div class="card">
+        <div class="card-header" style="font-weight:600;">Your Top Missed Artists</div>
+        <ul class="list-group list-group-flush">
+          {% if top_missed_artists %}
+            {% for item in top_missed_artists %}
+              <li class="list-group-item">
+                {{ item[0]|title }}
+                <span class="text-muted">(missed: {{ item[1]|round(1) }} times)</span>
+              </li>
+            {% endfor %}
+          {% else %}
+            <li class="list-group-item text-muted">
+              <em>No missed artist data</em>
+            </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 
-<!-- Optional hover effect for snippet -->
+{# Buddy Stage & styling #}
+{% set user_elo = user.personalized_guess_elo if user else 1200 %}
+{% if user_elo < 1100 %}
+  {% set buddy_stage = 'buddy-stage-bronze' %}
+{% elif user_elo < 1300 %}
+  {% set buddy_stage = 'buddy-stage-silver' %}
+{% elif user_elo < 1500 %}
+  {% set buddy_stage = 'buddy-stage-gold' %}
+{% else %}
+  {% set buddy_stage = 'buddy-stage-diamond' %}
+{% endif %}
+
+<!-- Center the Buddy in the viewport -->
+<div class="jukebox {{ buddy_stage }}" id="buddyPersonalized"
+style="position: fixed; top: 50%; right: 60px; transform: translateY(-50%); z-index:9999;">
+
+  <!-- Buddy's face & parts -->
+  <div class="silver-band left"></div>
+  <div class="silver-band right"></div>
+  <div class="decorative-line"></div>
+  <div class="face">
+    <div class="eye left"><div class="pupil"></div></div>
+    <div class="eye right"><div class="pupil"></div></div>
+    <div class="mouth" id="buddyMouth"></div>
+  </div>
+  <div class="grille"></div>
+  <div class="speaker"></div>
+  <div class="button"></div>
+  <div class="arm arm-left"><div class="hand"></div></div>
+  <div class="arm arm-right"><div class="hand"></div></div>
+  <div class="leg leg-left"><div class="shoe"></div></div>
+  <div class="leg leg-right"><div class="shoe"></div></div>
+</div>
+
 <style>
-.snippet-container:hover {
-  transform: scale(1.05);
-  border-color: #aaa;
+/* Buddy stage backgrounds */
+.buddy-stage-bronze {
+  background: linear-gradient(to bottom, #cd7f32, #a76a29)!important;
+  box-shadow: 0 0 15px rgba(205,127,50,0.6);
 }
-/* Autocomplete styles (same as in random_version) */
-.autocomplete-items {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  border: 1px solid #ccc;
-  border-top: none;
-  border-radius: 0 0 4px 4px;
-  background: #fff;
-  max-height: 200px;
-  overflow-y: auto;
+.buddy-stage-silver {
+  background: linear-gradient(to bottom, #c0c0c0, #a2a2a2)!important;
+  box-shadow: 0 0 15px rgba(192,192,192,0.6);
+}
+.buddy-stage-gold {
+  background: linear-gradient(to bottom, #ffd700, #e3c100)!important;
+  box-shadow: 0 0 20px rgba(255,215,0,0.9);
+}
+.buddy-stage-diamond {
+  background: linear-gradient(135deg, #e0f7ff, #f9ffff)!important;
+  box-shadow: 0 0 25px rgba(173,216,230,0.8),
+              0 0 40px rgba(224,255,255,0.5);
 }
 
+/* Buddy dance/sad animations remain */
+@keyframes buddyDance {
+  0%   { transform: translateY(0)   rotate(0deg); }
+  25%  { transform: translateY(-6px) rotate(-3deg); }
+  50%  { transform: translateY(-12px) rotate(3deg); }
+  75%  { transform: translateY(-6px) rotate(-3deg); }
+  100% { transform: translateY(0)   rotate(0deg); }
+}
+.dance {
+  animation: buddyDance 1.2s ease-in-out;
+}
+@keyframes buddySad {
+  0%   { transform:translateY(0); }
+  50%  { transform:translateY(5px) scaleY(0.95); }
+  100% { transform:translateY(0); }
+}
+.sad {
+  animation: buddySad 1.2s ease-in-out;
+}
+
+/* Speech bubble for hints/interaction */
+.speech-bubble {
+  max-width: 220px;
+  background: #f8f8f8;
+  border: 1px solid #ccc;
+  padding: 10px;
+  border-radius: 6px;
+  position: absolute;
+  z-index: 99999;
+  font-size: 0.9rem;
+  color: #333;
+}
+
+/* Autocomplete dropdown style */
+.autocomplete-items {
+  position: absolute;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  z-index: 2000;
+  background: #fff;
+  width: 100%;
+}
 .autocomplete-items div {
-  padding: 8px 12px;
+  padding: 8px;
   cursor: pointer;
-  border-bottom: 1px solid #ddd;
 }
 .autocomplete-items div:hover {
-  background-color: #e9e9e9;
+  background-color: #f1f1f1;
 }
 </style>
 
 <script>
-// Confetti effect if correct
-document.addEventListener("DOMContentLoaded", function() {
-  const feedbackEl = document.querySelector(".card.mb-4.p-3.shadow-sm");
-  if (feedbackEl && feedbackEl.innerHTML.includes('Correct!')) {
-    startConfetti();
-    setTimeout(stopConfetti, 3500);
+// Reaction animations
+document.addEventListener("DOMContentLoaded", function(){
+  const feedbackEl = document.querySelector(".card.mb-4.p-3.shadow-sm.result-card");
+  const buddyEl = document.getElementById("buddyPersonalized");
+  if(!buddyEl) return;
+
+  if(feedbackEl){
+    if(feedbackEl.innerHTML.includes("Correct!")){
+      buddyEl.classList.add("dance");
+      setTimeout(()=>buddyEl.classList.remove("dance"),1200);
+    }
+    else if(feedbackEl.innerHTML.includes("Not Quite") ||
+            feedbackEl.innerHTML.includes("Wrong!")){
+      buddyEl.classList.add("sad");
+      setTimeout(()=>buddyEl.classList.remove("sad"),1200);
+    }
   }
 });
 
-let confettiInterval = null;
-function startConfetti() {
-  const canvas = document.getElementById("confettiCanvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  let W = window.innerWidth;
-  let H = window.innerHeight;
-  canvas.width = W;
-  canvas.height = H;
-
-  const confettis = [];
-  for (let i=0; i<80; i++) {
-    confettis.push({
-      x: Math.random()*W,
-      y: Math.random()*H - H,
-      r: Math.random()*6 + 4,
-      d: Math.random()*60 + 10,
-      color: "hsl(" + Math.floor(Math.random()*360) + ",70%,60%)",
-      tilt: Math.floor(Math.random()*10) - 10,
-      tiltAngleIncremental: Math.random()*0.07 + 0.05,
-      tiltAngle: 0
-    });
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    confettis.forEach((c) => {
-      c.tiltAngle += c.tiltAngleIncremental;
-      c.y += (Math.cos(c.d) + 3)/2;
-      c.tilt = Math.sin(c.tiltAngle) * 15;
-      if (c.y > H) {
-        c.y = -10;
-        c.x = Math.random()*W*1.5;
-      }
-      ctx.beginPath();
-      ctx.lineWidth = c.r;
-      ctx.strokeStyle = c.color;
-      ctx.moveTo(c.x + c.tilt + c.r, c.y);
-      ctx.lineTo(c.x + c.tilt, c.y + c.r);
-      ctx.stroke();
-    });
-  }
-
-  confettiInterval = setInterval(draw, 20);
-}
-
-function stopConfetti() {
-  clearInterval(confettiInterval);
-  const canvas = document.getElementById("confettiCanvas");
-  if (canvas) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-}
-
-// Autocomplete for artist guesses:
-document.addEventListener("DOMContentLoaded", function() {
+// Autocomplete for artist
+document.addEventListener("DOMContentLoaded", function(){
   const guessInput = document.getElementById("guess");
-  if (!guessInput) return;
-
-  const listContainer = document.getElementById("guess-autocomplete-list");
-  if (!listContainer) return;
-
-  guessInput.addEventListener("input", async function() {
-    const query = this.value.trim();
-    listContainer.innerHTML = "";
-    if (!query) return;
-
-    try {
-      const resp = await fetch(`/autocomplete/artist?q=${encodeURIComponent(query)}`);
-      if (!resp.ok) return;
-      const suggestions = await resp.json();
-      suggestions.forEach(item => {
-        const div = document.createElement("div");
-        div.textContent = item;
-        div.addEventListener("click", () => {
-          guessInput.value = item;
-          listContainer.innerHTML = "";
-        });
-        listContainer.appendChild(div);
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  });
-
-  // Close the dropdown if clicked outside
-  document.addEventListener("click", (e) => {
-    if (e.target !== guessInput) {
+  if(guessInput){
+    const listContainer = document.getElementById("guess-autocomplete-list");
+    guessInput.addEventListener("input", async function(){
+      const query = this.value.trim();
       listContainer.innerHTML = "";
-    }
-  });
+      if(!query) return;
+      try {
+        const resp = await fetch(`/autocomplete/artist?q=${encodeURIComponent(query)}`);
+        if(!resp.ok) return;
+        const suggestions = await resp.json();
+        suggestions.forEach(item => {
+          const div = document.createElement("div");
+          div.textContent = item;
+          div.addEventListener("click",()=>{
+            guessInput.value = item;
+            listContainer.innerHTML = "";
+          });
+          listContainer.appendChild(div);
+        });
+      } catch(err){
+        console.error(err);
+      }
+    });
+
+    document.addEventListener("click", (e)=>{
+      if(e.target !== guessInput){
+        listContainer.innerHTML = "";
+      }
+    });
+  }
 });
+
+// Autocomplete for title
+document.addEventListener("DOMContentLoaded", function(){
+  const guessTitle = document.getElementById("guessTitle");
+  if(guessTitle){
+    const titleContainer = document.getElementById("guessTitle-autocomplete-list");
+    guessTitle.addEventListener("input", async function(){
+      const query = this.value.trim();
+      titleContainer.innerHTML = "";
+      if(!query) return;
+      try {
+        const resp = await fetch(`/autocomplete/title?q=${encodeURIComponent(query)}`);
+        if(!resp.ok) return;
+        const suggestions = await resp.json();
+        suggestions.forEach(item => {
+          const div = document.createElement("div");
+          div.textContent = item;
+          div.addEventListener("click",()=>{
+            guessTitle.value = item;
+            titleContainer.innerHTML = "";
+          });
+          titleContainer.appendChild(div);
+        });
+      } catch(err){
+        console.error(err);
+      }
+    });
+
+    document.addEventListener("click", (e)=>{
+      if(e.target !== guessTitle){
+        titleContainer.innerHTML = "";
+      }
+    });
+  }
+});
+
+// Draggable buddy logic
+let isDraggingPB = false, offX = 0, offY = 0;
+const personalBuddy = document.getElementById("buddyPersonalized");
+if(personalBuddy){
+  personalBuddy.addEventListener('mousedown', (e) => {
+    isDraggingPB = true;
+    const rect = personalBuddy.getBoundingClientRect();
+    offX = e.clientX - rect.left;
+    offY = e.clientY - rect.top;
+  });
+  document.addEventListener('mousemove', (e) => {
+    if(!isDraggingPB) return;
+    personalBuddy.style.left = (e.clientX - offX) + "px";
+    personalBuddy.style.top = (e.clientY - offY) + "px";
+  });
+  document.addEventListener('mouseup', () => { isDraggingPB = false; });
+}
+
+// Buddy offers a hint if there's no feedback
+document.addEventListener("DOMContentLoaded", () => {
+  const feedbackCard = document.querySelector(".card.mb-4.p-3.shadow-sm.result-card");
+  const personalBuddy = document.getElementById("buddyPersonalized");
+  if(!feedbackCard && personalBuddy){
+    setTimeout(() => {
+      buddyAskHint("Greetings. Do you want a hint from me?", (ans) => {
+        if(ans === "Yes"){
+          const storedHint = {{ buddy_hint|tojson|default("null") }};
+          if(storedHint && storedHint !== "null"){
+            buddyShowHint(storedHint);
+          } else {
+            buddyShowHint("No hint found. Sorry beep beep!");
+          }
+        } else {
+          buddyShowHint("No hint then. Good luck!");
+        }
+      });
+    }, 1500);
+  }
+});
+
+function buddyAskHint(question, callback){
+  const oldBubble = document.querySelector(".speech-bubble");
+  if(oldBubble) oldBubble.remove();
+
+  const bubble = document.createElement("div");
+  bubble.className = "speech-bubble";
+  bubble.innerHTML =
+    `<div>${question}</div>
+     <div style="margin-top:8px;">
+       <button class="btn btn-sm btn-success me-2">Yes</button>
+       <button class="btn btn-sm btn-secondary">No</button>
+     </div>`;
+  document.body.appendChild(bubble);
+
+  requestAnimationFrame(() => {
+    const bRect = personalBuddy.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    bubble.style.position = "absolute";
+    bubble.style.top = (bRect.top + 20) + "px";
+    bubble.style.left = (bRect.left - bubbleRect.width - 10) + "px";
+  });
+
+  const yesBtn = bubble.querySelector(".btn-success");
+  const noBtn = bubble.querySelector(".btn-secondary");
+  yesBtn.addEventListener("click", () => {
+    bubble.remove();
+    callback("Yes");
+  });
+  noBtn.addEventListener("click", () => {
+    bubble.remove();
+    callback("No");
+  });
+}
+
+function buddyShowHint(hintText){
+  const oldBubble = document.querySelector(".speech-bubble");
+  if(oldBubble) oldBubble.remove();
+
+  const bubble = document.createElement("div");
+  bubble.className = "speech-bubble";
+  bubble.innerHTML = `<div><strong>Hint:</strong> ${hintText}</div>`;
+  document.body.appendChild(bubble);
+
+  requestAnimationFrame(() => {
+    const bRect = personalBuddy.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    bubble.style.position = "absolute";
+    bubble.style.top = (bRect.top + 20) + "px";
+    bubble.style.left = (bRect.left - bubbleRect.width - 10) + "px";
+  });
+}
 </script>
 {% endblock %}

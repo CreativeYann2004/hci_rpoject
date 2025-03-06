@@ -1,4 +1,3 @@
-# routes/quiz_ranking.py
 import random
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -23,7 +22,6 @@ def require_login(f):
             return redirect(url_for('auth_bp.login'))
         return f(*args, **kwargs)
     return wrapper
-
 
 ###############################################################################
 # HELPER: "CLOSENESS" & "SPREAD"
@@ -76,14 +74,12 @@ def pick_spread_tracks(track_list, n=4, mode='timeline', elo=1200):
         chosen.append(sorted_all[idx])
         idx += step
 
-    # If we still need more, pick random leftover
     while len(chosen) < n:
         leftover = [x for x in sorted_all if x not in chosen]
         if not leftover:
             break
         chosen.append(random.choice(leftover))
     return chosen
-
 
 ###############################################################################
 # RANDOM RANK
@@ -93,7 +89,6 @@ def pick_spread_tracks(track_list, n=4, mode='timeline', elo=1200):
 def random_rank():
     """
     Presents a random subset of tracks for ranking.
-    Stores them in session['random_ranking_tracks'].
     """
     if not ALL_TRACKS:
         flash("No tracks found. Please select/import a playlist first.", "warning")
@@ -107,10 +102,8 @@ def random_rank():
         flash("Not enough tracks to rank!", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    # e.g. pick 2..4 random tracks
     n = random.choice([2, 3, 4][:max_n])
 
-    # ensure unique popularity values for clarity
     sample_tracks = []
     while len(sample_tracks) < n:
         track = random.choice(ALL_TRACKS)
@@ -121,7 +114,6 @@ def random_rank():
     session['ranking_mode'] = session.get('ranking_mode', 'popularity')  # default
 
     return render_template("random_rank_drag.html", tracks=sample_tracks)
-
 
 @quiz_bp.route('/submit_random_rank', methods=['POST'])
 @require_login
@@ -137,7 +129,6 @@ def submit_random_rank():
     final_order = request.form.get("final_order", "").strip()
     final_ids = [x for x in final_order.split(",") if x]
 
-    # filter out anything not in track_ids
     final_ids = [x for x in final_ids if x in track_ids]
     if not final_ids:
         final_ids = track_ids
@@ -147,7 +138,6 @@ def submit_random_rank():
 
     valid_tracks = [get_track(tid) for tid in track_ids if get_track(tid)]
     if ranking_mode == 'timeline':
-        # ascending by year
         correct_ordered = sorted(valid_tracks, key=lambda t: t['year'])
     else:
         # descending by popularity => highest popularity is rank 1
@@ -171,7 +161,6 @@ def submit_random_rank():
 
     correctness_fraction = count_correct_pairs(final_ids)
 
-    # Combine correctness with user-chosen difficulty rating
     difficulty_str = request.form.get("difficulty", "3")
     try:
         difficulty_rating = int(difficulty_str)
@@ -196,7 +185,6 @@ def submit_random_rank():
 
     return redirect(url_for('quiz_bp.ranking_results', approach='random'))
 
-
 ###############################################################################
 # PERSONALIZED RANK
 ###############################################################################
@@ -213,8 +201,7 @@ def personalized_rank():
     lines = get_buddy_personality_lines()
     session["buddy_message"] = random.choice(lines['rank'])
 
-    # gather personalization data
-    artist_scores, decade_scores, track_scores = build_personalization_scores(user)
+    artist_scores, decade_scores, track_scores, genre_scores = build_personalization_scores(user)
 
     elo = user.personalized_rank_elo
     if elo < 1100:
@@ -227,13 +214,48 @@ def personalized_rank():
     difficulty = session.get('difficulty', 'normal')
     ranking_mode = session.get('ranking_mode', 'popularity')
 
-    # pick tracks based on difficulty and ELO
-    if difficulty == 'hard':
-        chosen = pick_close_tracks(ALL_TRACKS, base_count, mode=ranking_mode)
-    elif difficulty == 'easy':
-        chosen = pick_spread_tracks(ALL_TRACKS, base_count, mode=ranking_mode, elo=elo)
-    else:
-        chosen = random.sample(ALL_TRACKS, base_count)
+    # pick half from top-missed artists/decades/genres/tracks, half from leftover
+    def top_n_from_dict(d, n=2):
+        return sorted(d.keys(), key=lambda k: d[k], reverse=True)[:n]
+
+    top_artists = top_n_from_dict(artist_scores)
+    top_decades = top_n_from_dict(decade_scores)
+    top_genres = top_n_from_dict(genre_scores)
+    # We won't specifically pick from track_scores since that might be 1:1 with track IDs
+
+    missed_candidates = []
+    for t in ALL_TRACKS:
+        a = t['artist'].lower()
+        d = get_decade(t['year'])
+        gset = set(t.get('genre_list', []))
+        if a in top_artists or d in top_decades or gset.intersection(top_genres):
+            missed_candidates.append(t)
+
+    chosen = []
+    half = max(1, base_count // 2)
+    random.shuffle(missed_candidates)
+    while len(chosen) < half and missed_candidates:
+        chosen.append(missed_candidates.pop())
+
+    leftover = [t for t in ALL_TRACKS if t not in chosen]
+    needed = base_count - len(chosen)
+    if needed < 0:
+        needed = 0
+
+    from .quiz_ranking import pick_close_tracks, pick_spread_tracks
+
+    if needed > 0:
+        if difficulty == 'hard':
+            cluster = pick_close_tracks(leftover, needed, mode=ranking_mode)
+            chosen.extend(cluster)
+        elif difficulty == 'easy':
+            cluster = pick_spread_tracks(leftover, needed, mode=ranking_mode)
+            chosen.extend(cluster)
+        else:
+            if len(leftover) <= needed:
+                chosen.extend(leftover)
+            else:
+                chosen.extend(random.sample(leftover, needed))
 
     if len(chosen) < 2:
         flash("Not enough tracks to do a personalized ranking!", "warning")
@@ -243,13 +265,9 @@ def personalized_rank():
 
     return render_template("personalized_rank_drag.html", tracks=chosen, elo=elo)
 
-
 @quiz_bp.route('/personalized_rank_from_session')
 @require_login
 def personalized_rank_from_session():
-    """
-    Possibly let the user re-rank the personalized tracks already stored in session.
-    """
     track_ids = session.get('personalized_ranking_tracks', [])
     if not track_ids:
         flash("No personalized tracks in session. Starting a new selection.", "info")
@@ -263,7 +281,6 @@ def personalized_rank_from_session():
     lines = get_buddy_personality_lines()
     session["buddy_message"] = random.choice(lines['rank'])
     return render_template("personalized_rank_drag.html", tracks=final_tracks)
-
 
 @quiz_bp.route('/submit_personalized_rank', methods=['POST'])
 @require_login
@@ -281,7 +298,6 @@ def submit_personalized_rank():
     if drag_order:
         final_ids = [x for x in drag_order.split(",") if x]
     else:
-        # fallback: check numeric rank inputs (if any)
         submitted_order = []
         for tid in track_ids:
             rank_str = request.form.get(f"rank_{tid}")
@@ -339,7 +355,7 @@ def submit_personalized_rank():
 
     db.session.commit()
 
-    session.pop('personalized_ranking_tracks', None)  # done with them
+    session.pop('personalized_ranking_tracks', None)
 
     session['personalized_ranking_results'] = {
         'approach': 'personalized',
@@ -354,7 +370,6 @@ def submit_personalized_rank():
 
     return redirect(url_for('quiz_bp.ranking_results', approach='personalized'))
 
-
 ###############################################################################
 # RANKING RESULTS
 ###############################################################################
@@ -368,4 +383,43 @@ def ranking_results(approach):
         correctness = results.get('correctness_fraction')
         return render_template("ranking_results.html", results=results, new_elo=new_elo, elo_change=elo_change, correctness=correctness)
     else:
-        return render_template("ranking_results.html", results=results)
+        data = session.get('random_ranking_results')
+
+    if not data:
+        flash(f"No ranking results found for approach='{approach}'.", "warning")
+        return redirect(url_for('quiz_bp.dashboard'))
+
+    final_ids = data['final_ids']
+    correct_ids = data['correct_ids']
+    approach = data['approach']
+    correctness_fraction = data['correctness_fraction']
+    difficulty = data['difficulty']
+    outcome = data['outcome']
+
+    ranking_mode = session.get('ranking_mode', 'popularity')
+
+    def get_track(tid):
+        return next((t for t in ALL_TRACKS if t['id'] == tid), None)
+
+    length = max(len(final_ids), len(correct_ids))
+    final_list = [get_track(tid) for tid in final_ids]
+    correct_list = [get_track(tid) for tid in correct_ids]
+
+    while len(final_list) < length:
+        final_list.append(None)
+    while len(correct_list) < length:
+        correct_list.append(None)
+
+    combined = []
+    for i in range(length):
+        combined.append((final_list[i], correct_list[i]))
+
+    return render_template(
+        "ranking_results.html",
+        approach=approach,
+        combined=combined,
+        correctness=correctness_fraction,
+        difficulty=difficulty,
+        outcome=outcome,
+        ranking_mode=ranking_mode
+    )

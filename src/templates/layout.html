@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>{% block title %}Project Manual: Random vs Personalized UI{% endblock %}</title>
+  <title>{% block title %}Music Mystery{% endblock %}</title>
   <!-- Bootstrap 5 CSS -->
   <link
     rel="stylesheet"
@@ -17,7 +17,7 @@
   <nav class="navbar navbar-expand-lg {% if session.color_theme == 'light' %}navbar-light bg-light{% else %}navbar-dark bg-dark{% endif %}">
     <div class="container-fluid">
       <a class="navbar-brand" href="{{ url_for('quiz_bp.dashboard') }}">
-        HCI - Two UI Prototypes
+        HCI Project ---Music Mystery---
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarToggler">
         <span class="navbar-toggler-icon"></span>
@@ -73,7 +73,7 @@
   <!-- Footer -->
   <footer class="bg-secondary text-white mt-5 py-3">
     <div class="container text-center">
-      <small>HCI Project – Random UI vs Personalized UI</small>
+      <small>HCI Project</small>
     </div>
   </footer>
 
@@ -81,22 +81,18 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/tab_autocomplete.js') }}"></script>
 
-  <!-- The "buddy" dancing jukebox code (unchanged) -->
-  <!-- ... -->
-  <!-- (No changes, left in place in case you still want animated buddy + messages) -->
-</body>
-</html>
+  <!-- 
+    =========================================================
+    BUDDY CODE START: We embed the Dancing Jukebox in the layout
+    (the "normal" buddy).
+    =========================================================
+  -->
 
-  <!-- ========================================================= -->
-  <!-- BUDDY CODE START: We embed the Dancing Jukebox and scripts -->
-  <!-- ========================================================= -->
-
-  <!-- Simple beep audio (one short beep). -->
   <audio id="beep"
          src="data:audio/wav;base64,UklGRm4AAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YU0AA"
          preload="auto"></audio>
 
-  <div class="jukebox" id="jukebox" 
+  <div class="jukebox" id="buddyInLayout"
        style="position: fixed; top: 50%; right: 60px; transform: translateY(-50%); z-index:9999;">
     <div class="silver-band left"></div>
     <div class="silver-band right"></div>
@@ -470,7 +466,7 @@
 
     /* ========== CLICK: SPIN DANCE ========== */
     window.addEventListener('DOMContentLoaded', () => {
-      const jukebox = document.getElementById('jukebox');
+      const jukebox = document.getElementById('buddyInLayout');
       if (!jukebox) return;
       jukebox.addEventListener('click', () => {
         jukebox.classList.add('spin-dance');
@@ -484,7 +480,7 @@
     /* ========== SPEAKING FEATURE ========== */
     function speakMessage(text) {
       if (!text) return;
-      const jukebox = document.getElementById('jukebox');
+      const jukebox = document.getElementById('buddyInLayout');
       const mouth = document.getElementById('mouth');
       const beepAudio = document.getElementById('beep');
       if (!jukebox || !mouth || !beepAudio) return;
@@ -513,7 +509,6 @@
       const interval = setInterval(() => {
         beepAudio.currentTime = 0;
         beepAudio.play();
-
         index++;
         if (index >= words.length) {
           clearInterval(interval);
@@ -535,6 +530,24 @@
         speakMessage(buddyMsg);
       }
     });
+
+    /* ========== Draggable Normal Buddy ========== */
+    let isDraggingNB = false, offNX=0, offNY=0;
+    const normalBuddy=document.getElementById("buddyInLayout");
+    if(normalBuddy){
+      normalBuddy.addEventListener('mousedown',(e)=>{
+        isDraggingNB=true;
+        const rect=normalBuddy.getBoundingClientRect();
+        offNX=e.clientX-rect.left;
+        offNY=e.clientY-rect.top;
+      });
+      document.addEventListener('mousemove',(e)=>{
+        if(!isDraggingNB)return;
+        normalBuddy.style.left=(e.clientX-offNX)+"px";
+        normalBuddy.style.top=(e.clientY-offNY)+"px";
+      });
+      document.addEventListener('mouseup',()=>{isDraggingNB=false;});
+    }
   </script>
 </body>
 </html>
