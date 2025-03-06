@@ -129,6 +129,7 @@ def submit_random_rank():
     final_order = request.form.get("final_order", "").strip()
     final_ids = [x for x in final_order.split(",") if x]
 
+    # Ensure only the track_ids we offered are used
     final_ids = [x for x in final_ids if x in track_ids]
     if not final_ids:
         final_ids = track_ids
@@ -174,13 +175,15 @@ def submit_random_rank():
     user.update_elo('random', 'rank', outcome)
     db.session.commit()
 
-    session['random_ranking_results'] = {
-        'approach': 'random',
-        'final_ids': final_ids,
-        'correct_ids': correct_ids_in_order,
-        'correctness_fraction': correctness_fraction,
-        'difficulty': difficulty_rating,
-        'outcome': outcome,
+    # Store everything in session['random_ranking_results']
+    session["random_ranking_results"] = {
+        "approach": "random",
+        "ranking_mode": ranking_mode,
+        "final_ids": final_ids,
+        "correct_ids": correct_ids_in_order,
+        "correctness_fraction": correctness_fraction,
+        "difficulty": difficulty_rating,
+        "outcome": outcome
     }
 
     return redirect(url_for('quiz_bp.ranking_results', approach='random'))
@@ -214,14 +217,12 @@ def personalized_rank():
     difficulty = session.get('difficulty', 'normal')
     ranking_mode = session.get('ranking_mode', 'popularity')
 
-    # pick half from top-missed artists/decades/genres/tracks, half from leftover
     def top_n_from_dict(d, n=2):
         return sorted(d.keys(), key=lambda k: d[k], reverse=True)[:n]
 
     top_artists = top_n_from_dict(artist_scores)
     top_decades = top_n_from_dict(decade_scores)
     top_genres = top_n_from_dict(genre_scores)
-    # We won't specifically pick from track_scores since that might be 1:1 with track IDs
 
     missed_candidates = []
     for t in ALL_TRACKS:
@@ -357,15 +358,17 @@ def submit_personalized_rank():
 
     session.pop('personalized_ranking_tracks', None)
 
-    session['personalized_ranking_results'] = {
-        'approach': 'personalized',
-        'final_ids': final_ids,
-        'correct_ids': correct_ids_in_order,
-        'correctness_fraction': correctness_fraction,
-        'difficulty': difficulty_rating,
-        'outcome': outcome,
-        'new_elo': new_elo,
-        'elo_change': elo_change,
+    # Store everything in session['personalized_ranking_results']
+    session["personalized_ranking_results"] = {
+        "approach": "personalized",
+        "ranking_mode": ranking_mode,
+        "final_ids": final_ids,
+        "correct_ids": correct_ids_in_order,
+        "correctness_fraction": correctness_fraction,
+        "difficulty": difficulty_rating,
+        "outcome": outcome,
+        "new_elo": new_elo,
+        "elo_change": elo_change,
     }
 
     return redirect(url_for('quiz_bp.ranking_results', approach='personalized'))
@@ -376,30 +379,23 @@ def submit_personalized_rank():
 @quiz_bp.route('/ranking_results/<approach>', methods=['GET'])
 @require_login
 def ranking_results(approach):
-    results = session.get('personalized_ranking_results', {})
-    if approach == 'personalized':
-        new_elo = results.get('new_elo')
-        elo_change = results.get('elo_change')
-        correctness = results.get('correctness_fraction')
-        return render_template("ranking_results.html", results=results, new_elo=new_elo, elo_change=elo_change, correctness=correctness)
+    """
+    Displays the final ranking results for either random or personalized approach.
+    """
+    if approach == "personalized":
+        results = session.get("personalized_ranking_results")
     else:
-        data = session.get('random_ranking_results')
+        results = session.get("random_ranking_results")
 
-    if not data:
+    if not results:
         flash(f"No ranking results found for approach='{approach}'.", "warning")
         return redirect(url_for('quiz_bp.dashboard'))
 
-    final_ids = data['final_ids']
-    correct_ids = data['correct_ids']
-    approach = data['approach']
-    correctness_fraction = data['correctness_fraction']
-    difficulty = data['difficulty']
-    outcome = data['outcome']
-
-    ranking_mode = session.get('ranking_mode', 'popularity')
+    final_ids = results.get("final_ids", [])
+    correct_ids = results.get("correct_ids", [])
 
     def get_track(tid):
-        return next((t for t in ALL_TRACKS if t['id'] == tid), None)
+        return next((t for t in ALL_TRACKS if t["id"] == tid), None)
 
     length = max(len(final_ids), len(correct_ids))
     final_list = [get_track(tid) for tid in final_ids]
@@ -410,16 +406,10 @@ def ranking_results(approach):
     while len(correct_list) < length:
         correct_list.append(None)
 
-    combined = []
-    for i in range(length):
-        combined.append((final_list[i], correct_list[i]))
+    combined = list(zip(final_list, correct_list))
 
     return render_template(
         "ranking_results.html",
-        approach=approach,
-        combined=combined,
-        correctness=correctness_fraction,
-        difficulty=difficulty,
-        outcome=outcome,
-        ranking_mode=ranking_mode
+        results=results,
+        combined=combined
     )
