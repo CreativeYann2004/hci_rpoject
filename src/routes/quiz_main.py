@@ -5,8 +5,8 @@ from flask import Blueprint, session, redirect, url_for, flash, render_template,
 from functools import wraps
 from src.app import db
 from src.models import User, GuessLog
-from routes.auth import get_spotify_client
-from routes.quiz_base import (
+from src.routes.auth import get_spotify_client
+from src.routes.quiz_base import (
     quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS, get_buddy_personality_lines,
     generate_hints, _fetch_playlist_tracks, parse_spotify_playlist_input
 )
