@@ -191,7 +191,7 @@ def submit_random_rank():
 ###############################################################################
 # PERSONALIZED RANK
 ###############################################################################
-from routes.quiz_personalized import build_personalization_scores, get_decade
+from src.routes.quiz_personalized import build_personalization_scores, get_decade
 
 @quiz_bp.route('/personalized_rank', methods=['GET'])
 @require_login
