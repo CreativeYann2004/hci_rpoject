@@ -29,12 +29,12 @@ def create_app():
         }
 
     # Register Blueprints
-    from routes.auth import auth_bp
-    from routes.quiz_base import quiz_bp
+    from src.routes.auth import auth_bp
+    from src.routes.quiz_base import quiz_bp
 
-    import routes.quiz_main
-    import routes.quiz_personalized
-    import routes.quiz_ranking
+    import src.routes.quiz_main
+    import src.routes.quiz_personalized
+    import src.routes.quiz_ranking
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(quiz_bp)
