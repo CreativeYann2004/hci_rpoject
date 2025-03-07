@@ -5,7 +5,7 @@ from functools import wraps
 
 from flask import Blueprint, session, redirect, url_for, flash
 from src.app import db
-from models import User
+from src.models import User
 
 quiz_bp = Blueprint("quiz_bp", __name__)
 
