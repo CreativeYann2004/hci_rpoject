@@ -429,5 +429,5 @@ def download_db():
     return send_file(
         db_path,
         as_attachment=True,
-        attachment_filename="guessing_game.db"
+        download_name="guessing_game.db"  # <-- Replaces attachment_filename
     )
