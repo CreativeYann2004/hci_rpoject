@@ -1,5 +1,5 @@
 # Core Application Dependencies
-Flask>= 2.2.5
+Flask==2.3.3
 Flask-SQLAlchemy==3.0.5
 Flask-WTF==1.1.1
 Flask-Login==0.6.2
@@ -34,10 +34,10 @@ mypy==1.4.1
 
 # Production Dependencies
 gunicorn==21.2.0
-psycopg2-binary==2.9.6  # For PostgreSQL in production
-Redis==4.6.0  # For caching
+psycopg2-binary==2.9.6
+Redis==4.6.0
 Flask-Caching==2.0.2
-Flask-Talisman==1.0.0  # Security headers
+Flask-Talisman==1.0.0
 
 # Documentation
 Sphinx==7.1.2
