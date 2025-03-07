@@ -3,7 +3,7 @@ import spotipy
 import spotipy.exceptions
 from flask import Blueprint, session, redirect, url_for, flash, render_template, request, jsonify
 from functools import wraps
-from app import db
+from src.app import db
 from models import User, GuessLog
 from routes.auth import get_spotify_client
 from routes.quiz_base import (
