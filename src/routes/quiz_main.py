@@ -425,7 +425,7 @@ def download_db():
     if passwd != SECRET_DOWNLOAD_PASSWORD:
         abort(403)
 
-    db_path = os.path.join(os.path.dirname(__file__), "../../guessing_game.db")
+    db_path = os.path.join(os.path.dirname(__file__), "src\instance\guessing_game.db")
     return send_file(
         db_path,
         as_attachment=True,
