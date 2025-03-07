@@ -5,7 +5,7 @@ from flask import (
 )
 from src.app import db
 from src.models import User
-from routes.quiz_base import quiz_bp, ALL_TRACKS, get_buddy_personality_lines
+from src.routes.quiz_base import quiz_bp, ALL_TRACKS, get_buddy_personality_lines
 
 def current_user():
     uid = session.get("user_id")
