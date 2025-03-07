@@ -425,9 +425,11 @@ def download_db():
     if passwd != SECRET_DOWNLOAD_PASSWORD:
         abort(403)
 
-    db_path = os.path.join(os.path.dirname(__file__), "src/instance/guessing_game.db")
+    # Go UP one directory from routes/ to src/, then into instance/
+    db_path = os.path.join(os.path.dirname(__file__), "../instance/guessing_game.db")
+
     return send_file(
         db_path,
         as_attachment=True,
-        download_name="guessing_game.db"  # <-- Replaces attachment_filename
+        download_name="guessing_game.db"  # for modern Flask
     )
