@@ -1,5 +1,5 @@
 # Core Application Dependencies
-Flask==2.2.3
+Flask>= 2.2.5
 Flask-SQLAlchemy==3.0.5
 Flask-WTF==1.1.1
 Flask-Login==0.6.2
