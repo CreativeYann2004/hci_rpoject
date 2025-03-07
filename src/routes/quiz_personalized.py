@@ -5,7 +5,7 @@ from flask import (
     render_template, request, redirect, url_for,
     session, flash
 )
-from app import db
+from src.app import db
 from models import User, GuessLog
 from routes.quiz_base import (
     quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS,
