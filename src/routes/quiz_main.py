@@ -1,16 +1,45 @@
+import os
+import re
 import random
+import time
+from functools import wraps
+
 import spotipy
 import spotipy.exceptions
-from flask import Blueprint, session, redirect, url_for, flash, render_template, request, jsonify
-from functools import wraps
+from flask import (
+    Blueprint,
+    session,
+    redirect,
+    url_for,
+    flash,
+    render_template,
+    request,
+    jsonify,
+    send_file,
+    abort  # <-- needed for the download route
+)
 from src.app import db
 from src.models import User, GuessLog
 from src.routes.auth import get_spotify_client
-from src.routes.quiz_base import (
-    quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS, get_buddy_personality_lines,
-    generate_hints, _fetch_playlist_tracks, parse_spotify_playlist_input
-)
 
+quiz_bp = Blueprint("quiz_bp", __name__)
+
+########################################
+# SHARED GLOBALS
+########################################
+ALL_TRACKS = []
+
+RANDOM_MUSIC_FACTS = [
+    "The world's longest running performance is John Cage's 'Organ²/ASLSP', scheduled to end in 2640!",
+    "Did you know? The Beatles were originally called The Quarrymen.",
+    "Elvis Presley never performed outside of North America.",
+    "The 'I' in iPod was inspired by the phrase 'Internet', not 'me/myself'.",
+    "Metallica is the first and only band to have performed on all seven continents!"
+]
+
+########################################
+# SHARED HELPERS
+########################################
 def current_user():
     uid = session.get("user_id")
     if not uid:
@@ -26,6 +55,181 @@ def require_login(f):
         return f(*args, **kwargs)
     return wrapper
 
+def parse_spotify_playlist_input(user_input):
+    if not user_input:
+        return ""
+    user_input = user_input.strip()
+    # Look for either Spotify playlist link or URN
+    match = re.search(r'(?:spotify\.com/playlist/|spotify:playlist:)([A-Za-z0-9]+)', user_input)
+    if match:
+        return match.group(1)
+    if re.match(r'^[A-Za-z0-9]+$', user_input):
+        return user_input
+    return user_input
+
+def get_buddy_personality_lines():
+    personality = session.get('buddy_personality', 'friendly')
+    lines = {
+        'friendly': {
+            'correct': [
+                "You're on fire!",
+                "Woohoo! Nice job!",
+                "Way to go, friend!"
+            ],
+            'wrong': [
+                "Don't worry, you'll get it next time!",
+                "Chin up—try again soon!",
+            ],
+            'start': [
+                "Let's do this! I'm here to help!",
+            ],
+            'rank': [
+                "Ranking time! Let's see what you think!",
+                "Time to order some tracks—have fun!"
+            ],
+            'hint': [
+                "Psst—need a clue?",
+                "A little hint won't hurt, right?",
+                "Okay, here's a nudge in the right direction…"
+            ]
+        },
+        'strict': {
+            'correct': [
+                "At least you got it right this time.",
+                "Alright, that was acceptable.",
+            ],
+            'wrong': [
+                "Incorrect. Focus harder next time.",
+                "You can do better than that...",
+            ],
+            'start': [
+                "You're here again? Fine, let's get it done.",
+            ],
+            'rank': [
+                "Ranking again? Don’t mess it up.",
+                "Focus and get it right this time."
+            ],
+            'hint': [
+                "Try harder. Here's a tiny clue.",
+                "I'm only giving this hint once.",
+                "You shouldn't need a hint, but here you go..."
+            ]
+        }
+    }
+    return lines.get(personality, lines['friendly'])
+
+########################################
+# HELPER: fetch playlist tracks
+########################################
+def _fetch_playlist_tracks(sp, playlist_id, limit=300):
+    offset = 0
+    total = 0
+    added = 0
+
+    global ALL_TRACKS
+    while offset < limit:
+        data = sp.playlist_items(
+            playlist_id,
+            limit=50,
+            offset=offset,
+            market="from_token"
+        )
+        items = data.get('items', [])
+        if not items:
+            break
+
+        for it in items:
+            track = it.get('track')
+            if not track:
+                continue
+            if track.get('is_local') or track.get('type') != 'track':
+                total += 1
+                continue
+
+            track_id = track.get('id')
+            if not track_id:
+                total += 1
+                continue
+
+            name = track.get('name', 'Unknown Title')
+            artists = track.get('artists', [{"name": "Unknown Artist"}])
+            artist_name = artists[0].get('name', '???')
+            preview_url = track.get('preview_url')
+            album_info = track.get('album', {})
+            release_date = album_info.get('release_date', '1900-01-01')
+            year = 1900
+            if release_date[:4].isdigit():
+                year = int(release_date[:4])
+
+            popularity = track.get('popularity', 0)
+
+            ALL_TRACKS.append({
+                "id": track_id,
+                "title": name,
+                "artist": artist_name,
+                "year": year,
+                "preview_url": preview_url,
+                "popularity": popularity
+            })
+            added += 1
+            total += 1
+
+        offset += 50
+        if offset >= data.get('total', 0):
+            break
+
+    return (total, added)
+
+########################################
+# HINT GENERATION
+########################################
+def generate_hints(track, question_type, user, is_personalized=False):
+    """
+    Return a list of hint strings to display. 
+    The buddy will re-say them until the user guesses.
+    """
+    hints = []
+
+    user_elo = user.personalized_guess_elo if is_personalized else user.random_guess_elo
+
+    # Example logic: advanced => fewer hints
+    max_hints = 3
+    if user_elo > 1400:
+        max_hints = 1
+    elif user_elo < 1100:
+        max_hints = 3  # allow full hints
+
+    if question_type == 'artist':
+        first_letter = track['artist'][0]
+        hints.append(f"The artist starts with '{first_letter}'.")
+        if is_personalized and max_hints > 1:
+            name_len = len(track['artist'])
+            hints.append(f"The artist's name has {name_len} letters.")
+
+    elif question_type == 'title':
+        first_letter = track['title'][0]
+        hints.append(f"The title starts with '{first_letter}'.")
+        if is_personalized and max_hints > 1:
+            hints.append(f"The title has {len(track['title'])} characters.")
+
+    elif question_type == 'year':
+        decade = (track['year'] // 10) * 10
+        hints.append(f"The release year is in the {decade}s.")
+        if is_personalized and max_hints > 1:
+            if track['year'] >= 2000:
+                hints.append("It's in the 21st century.")
+            else:
+                hints.append("It's in the 20th century or earlier.")
+
+    times_missed = user.get_missed_songs().count(track["id"])
+    if times_missed >= 2 and is_personalized and max_hints > 1:
+        hints.append("Remember, we've seen this track a few times already. Focus!")
+
+    return hints[:max_hints]
+
+########################################
+# QUIZ DASHBOARD & SETTINGS
+########################################
 @quiz_bp.route('/dashboard')
 @require_login
 def dashboard():
@@ -99,6 +303,9 @@ def scoreboard():
     sorted_users = sorted(users, key=lambda x: (accuracy(x), x.total_correct), reverse=True)
     return render_template('scoreboard.html', all_users=sorted_users)
 
+########################################
+# SELECT PLAYLIST
+########################################
 @quiz_bp.route('/select_playlist', methods=['GET','POST'])
 @require_login
 def select_playlist():
@@ -216,6 +423,7 @@ def random_version():
     # 40% chance to show a hint
     show_hint = (random.random() < 0.4)
     if show_hint:
+        from src.routes.quiz_base import generate_hints
         generated = generate_hints(chosen, ctype, current_user(), is_personalized=False)
         if generated:
             final_hint_text = " | ".join(generated)
@@ -247,11 +455,6 @@ def submit_guess():
     challenge = session.get("challenge_type", "artist")
     guess_str = request.form.get("guess", "").strip().lower()
     guess_correct = False
-
-    # For timing we won't track here (the random mode). If you want, you can do similarly:
-    # start_time = session.pop('question_start_time', None)
-    # if start_time is not None:
-    #     time_taken = time.time() - start_time
     time_taken = 0.0
 
     def within_year_margin_dynamic(g, actual):
@@ -277,6 +480,7 @@ def submit_guess():
 
     user.total_attempts += 1
     missed_list = user.get_missed_songs()
+    from src.routes.quiz_base import get_buddy_personality_lines
     lines = get_buddy_personality_lines()
 
     outcome = 1.0 if guess_correct else 0.0
@@ -355,8 +559,10 @@ def choose_playlist():
 
     user_playlists = []
     try:
-        result = sp.current_user_playlists(limit=50, offset=0)
-        user_playlists = result.get('items', [])
+        sp = get_spotify_client()
+        if sp:
+            result = sp.current_user_playlists(limit=50, offset=0)
+            user_playlists = result.get('items', [])
     except Exception as e:
         flash(f"Error fetching your playlists: {str(e)}", "danger")
         return redirect(url_for('quiz_bp.dashboard'))
@@ -379,6 +585,7 @@ def autocomplete_artist():
             artists.add(track["artist"])
     suggestions = sorted(list(artists), key=lambda x: x.lower())
     return jsonify(suggestions[:10])
+
 ###############################################################################
 # NEW: Autocomplete for Titles
 ###############################################################################
@@ -394,3 +601,29 @@ def autocomplete_title():
             titles.add(track["title"])
     suggestions = sorted(list(titles), key=lambda x: x.lower())
     return jsonify(suggestions[:10])
+
+###############################################################################
+# DOWNLOAD ROUTE (PASSWORD-PROTECTED)
+###############################################################################
+SECRET_DOWNLOAD_PASSWORD = "music"
+
+@quiz_bp.route("/admin/download_db")
+def download_db():
+    # Check a query param or basic auth
+    passwd = request.args.get("pw")
+    if passwd != SECRET_DOWNLOAD_PASSWORD:
+        abort(403)
+
+    # Adjust if your DB file is in a different location
+    db_path = os.path.join(os.path.dirname(__file__), "src\instance\guessing_game.db")
+    # If the DB is next to 'app.py', you might do something like:
+    #   db_path = os.path.join(current_app.root_path, "guessing_game.db")
+    # or similar, depending on your structure.
+
+    return send_file(
+        db_path,
+        as_attachment=True,
+        attachment_filename="guessing_game.db"
+    )
+
+
