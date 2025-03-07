@@ -5,7 +5,7 @@ from flask import (
 )
 from urllib.parse import urlencode
 from src.app import db
-from models import User
+from src.models import User
 import spotipy
 import os
 
