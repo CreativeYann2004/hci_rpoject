@@ -414,22 +414,31 @@ def autocomplete_title():
 # DOWNLOAD ROUTE (PASSWORD-PROTECTED)
 ###############################################################################
 import os
-from flask import send_file, abort
+from flask import send_file, abort, request
 
 SECRET_DOWNLOAD_PASSWORD = "some_strong_password_here"
 
 @quiz_bp.route("/admin/download_db")
 def download_db():
-    # Check a query param or basic auth
-    passwd = request.args.get("pw")
+    passwd = request.args.get("pw", "")
     if passwd != SECRET_DOWNLOAD_PASSWORD:
         abort(403)
 
-    # Go UP one directory from routes/ to src/, then into instance/
-    db_path = os.path.join(os.path.dirname(__file__), "../instance/guessing_game.db")
+    # Because quiz_main.py is physically at /project/src/src/routes,
+    # go two levels up (“../../”) to get back to /project/src,
+    # then into instance/guessing_game.db:
+    db_path = os.path.join(os.path.dirname(__file__), "../../instance/guessing_game.db")
+
+    print("DEBUG => __file__:", __file__)       # Should be something like /opt/render/project/src/src/routes/quiz_main.py
+    print("DEBUG => db_path:", db_path)
+
+    # Optional: confirm it exists
+    if not os.path.isfile(db_path):
+        print("DEBUG => That file path does not exist on the server!")
+        abort(404, "Database file not found")
 
     return send_file(
         db_path,
         as_attachment=True,
-        download_name="guessing_game.db"  # for modern Flask
+        download_name="guessing_game.db"
     )
