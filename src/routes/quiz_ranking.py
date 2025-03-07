@@ -3,7 +3,7 @@ from flask import (
     Blueprint, render_template, request, redirect,
     url_for, session, flash
 )
-from app import db
+from src.app import db
 from models import User
 from routes.quiz_base import quiz_bp, ALL_TRACKS, get_buddy_personality_lines
 
