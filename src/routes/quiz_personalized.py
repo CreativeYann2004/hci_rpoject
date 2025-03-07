@@ -7,7 +7,7 @@ from flask import (
 )
 from src.app import db
 from src.models import User, GuessLog
-from routes.quiz_base import (
+from src.routes.quiz_base import (
     quiz_bp, ALL_TRACKS, RANDOM_MUSIC_FACTS,
     current_user, require_login, get_buddy_personality_lines,
     generate_hints
