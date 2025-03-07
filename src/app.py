@@ -9,7 +9,7 @@ db = SQLAlchemy()
 def create_app():
     load_dotenv()
     app = Flask(__name__)
-    # For demo purposes only; use a secure random key in production
+    # For demo; use a secure random key in production
     app.secret_key = "ANY_RANDOM_SECRET_FOR_DEVELOPMENT"
 
     # Database config
@@ -23,7 +23,6 @@ def create_app():
 
     @app.context_processor
     def inject_buddy_message():
-        # We'll also pass session.buddy_hint if we want the buddy to repeat the hint
         return {
             "buddy_message": session.get("buddy_message", ""),
             "buddy_hint": session.get("buddy_hint", "")
