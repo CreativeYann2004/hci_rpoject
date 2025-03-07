@@ -4,7 +4,7 @@ from flask import (
     url_for, session, flash
 )
 from urllib.parse import urlencode
-from app import db
+from src.app import db
 from models import User
 import spotipy
 import os
